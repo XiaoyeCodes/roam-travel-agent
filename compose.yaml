@@ -1,0 +1,15 @@
+services:
+  roam:
+    build: .
+    ports:
+      - "127.0.0.1:8787:8787"
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      APP_ACCESS_TOKEN: ${APP_ACCESS_TOKEN:?Set APP_ACCESS_TOKEN in .env before container deployment}
+    volumes:
+      - roam-data:/app/.data
+    shm_size: 256mb
+    restart: unless-stopped
+volumes:
+  roam-data:

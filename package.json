@@ -1,0 +1,27 @@
+{
+  "name": "roam-travel-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB -c green,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w server && npm run build -w client",
+    "check": "npm run check -w server && npm run check -w client",
+    "start": "npm run start -w server",
+    "test": "node --import tsx --test server/tests/core.test.ts server/tests/mcp.test.ts server/tests/workflow.test.ts",
+    "test:ui": "node --import tsx scripts/ui-smoke.mjs",
+    "test:production": "node scripts/production-smoke.mjs",
+    "format": "prettier --write client/src server/src server/tests shared scripts",
+    "import-config": "node scripts/import-config.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "prettier": "^3.9.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
