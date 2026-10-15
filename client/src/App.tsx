@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import {
   AGENTS,
+  PHOTO_VERSION,
   DAY_COLORS,
   type AgentId,
   type Job,
@@ -58,9 +59,10 @@ import {
   type TripEvent,
   type TripRequest,
 } from "../../shared/types";
-import { api, downloadPdf, watchEvents } from "./api";
+import { api, downloadHtml, watchEvents } from "./api";
 import Settings from "./Settings";
 import MapView from "./MapView";
+import StopPhoto from "./StopPhoto";
 const ICONS = {
   attractions: Landmark,
   transport: TrainFront,
@@ -128,7 +130,8 @@ export default function App() {
     [creating, setCreating] = useState(false),
     [error, setError] = useState(""),
     [toast, setToast] = useState(""),
-    [pdfBusy, setPdfBusy] = useState(false),
+    [htmlBusy, setHtmlBusy] = useState(false),
+    [photosBusy, setPhotosBusy] = useState(false),
     [auth, setAuth] = useState(false),
     [token, setToken] = useState("");
   const [tab, setTab] = useState<
@@ -215,6 +218,48 @@ export default function App() {
     return () => controller.abort();
     // The stream owns event updates until this job reaches a terminal status.
   }, [job?.id, job?.status, loadHistory, notify]);
+  const photoRequest = useRef(0);
+  const refreshPhotos = useCallback(
+    async (id: string, force = false) => {
+      const request = ++photoRequest.current;
+      setPhotosBusy(true);
+      try {
+        const updated = await api<Job>(`/trips/${id}/photos`, {
+          method: "POST",
+          body: JSON.stringify({ force }),
+        });
+        setJob((current) => (current?.id === id ? updated : current));
+        if (force) {
+          const stops = updated
+            .plan!.days.flatMap((d) => d.stops)
+            .filter((s) => ["attraction", "food"].includes(s.type));
+          const count = stops.filter((s) => s.photo).length;
+          notify(`已为 ${count} / ${stops.length} 个景点与美食停留点配图。`);
+        }
+      } catch (e) {
+        if (force) notify((e as Error).message);
+      } finally {
+        if (photoRequest.current === request) setPhotosBusy(false);
+      }
+    },
+    [notify],
+  );
+  useEffect(() => {
+    if (
+      job?.status === "complete" &&
+      config &&
+      job.plan &&
+      (job.plan.photoVersion !== PHOTO_VERSION ||
+        job.plan.photoMode !== (config.hasUnsplashKey ? "search" : "curated"))
+    )
+      void refreshPhotos(job.id);
+  }, [
+    job?.id,
+    job?.status,
+    job?.plan?.photoVersion,
+    config?.hasUnsplashKey,
+    refreshPhotos,
+  ]);
   const busy = creating || job?.status === "running";
   async function generate(demo = false) {
     setError("");
@@ -250,19 +295,19 @@ export default function App() {
     localStorage.removeItem("roam-active-id");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  async function exportPdf() {
+  async function exportHtml() {
     if (!job?.plan) return;
-    setPdfBusy(true);
+    setHtmlBusy(true);
     try {
-      await downloadPdf(
+      await downloadHtml(
         job.id,
-        `${job.request.destination}-${job.request.days}日旅行计划.pdf`,
+        `${job.request.destination}-${job.request.days}日旅行手册.html`,
       );
-      notify("旅行手册已导出，愿你一路遇见好风景。");
+      notify("HTML 手册已导出，双击即可打开；图片需要联网加载。");
     } catch (e) {
       notify((e as Error).message);
     } finally {
-      setPdfBusy(false);
+      setHtmlBusy(false);
     }
   }
   const plan = job?.plan;
@@ -934,17 +979,38 @@ export default function App() {
                 </div>
                 <button
                   className="button primary small"
-                  disabled={pdfBusy}
-                  onClick={exportPdf}
+                  disabled={htmlBusy}
+                  onClick={exportHtml}
                 >
-                  {pdfBusy ? (
+                  {htmlBusy ? (
                     <LoaderCircle size={15} className="spin" />
                   ) : (
                     <Download size={15} />
                   )}{" "}
-                  {pdfBusy ? "正在制作手册" : "导出 PDF"}
+                  {htmlBusy ? "正在制作手册" : "导出 HTML"}
                 </button>
               </div>
+              {tab === "itinerary" && (
+                <div className="photo-toolbar">
+                  <span>
+                    {config?.hasUnsplashKey
+                      ? "逐站匹配 Unsplash 照片 · 取景以图片说明为准"
+                      : "已接入 Unsplash 精选配图 · 配置 Access Key 可按景点、菜品搜索"}
+                  </span>
+                  <button
+                    className="text-btn"
+                    disabled={photosBusy}
+                    onClick={() => void refreshPhotos(job!.id, true)}
+                  >
+                    {photosBusy ? (
+                      <LoaderCircle size={14} className="spin" />
+                    ) : (
+                      <RotateCcw size={14} />
+                    )}
+                    {photosBusy ? "正在匹配图片" : "补全图片"}
+                  </button>
+                </div>
+              )}
               {tab === "itinerary" && (
                 <div className="itinerary-layout">
                   <section>
@@ -1069,40 +1135,6 @@ export default function App() {
                 </>
               )}
               {tab === "sources" && <Sources plan={plan} />}
-              {plan.images.length > 0 && tab === "itinerary" && (
-                <section className="photo-section">
-                  <div className="section-heading">
-                    <div>
-                      <h2>先与目的地，见一面。</h2>
-                      <p>
-                        Unsplash 搜索照片 ·
-                        为旅程寻找灵感，内容可能与具体地点不完全对应。
-                      </p>
-                    </div>
-                  </div>
-                  <div className="photo-grid">
-                    {plan.images.map((p, i) => (
-                      <figure key={i}>
-                        <img src={p.url} alt={p.alt} loading="lazy" />
-                        <figcaption>
-                          Photo by{" "}
-                          <a
-                            href={p.profileUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {p.photographer}
-                          </a>{" "}
-                          on{" "}
-                          <a href={p.photoUrl} target="_blank" rel="noreferrer">
-                            Unsplash
-                          </a>
-                        </figcaption>
-                      </figure>
-                    ))}
-                  </div>
-                </section>
-              )}
               <div className="plan-notice">
                 <TriangleAlert size={17} />
                 <div>
@@ -1571,6 +1603,9 @@ function DayDetail({ plan, day }: { plan: Plan; day: number }) {
                         : `${money(s.cost)} 参考`}
                   </span>
                 </div>
+                {(s.type === "attraction" || s.type === "food") && (
+                  <StopPhoto stop={s} />
+                )}
                 <p>{s.description}</p>
                 {s.tip && (
                   <div className="stop-tip">

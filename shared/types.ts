@@ -1,3 +1,4 @@
+export const PHOTO_VERSION = 2;
 export const AGENTS = [
   {
     id: "attractions",
@@ -101,6 +102,9 @@ export type Stop = {
   verified: boolean;
   tip: string;
   sourceIds: string[];
+  photoQuery?: string;
+  photo?: Photo;
+  photoStatus?: "ready" | "unconfigured" | "not_found" | "error";
 };
 export type DayPlan = {
   day: number;
@@ -142,14 +146,21 @@ export type Plan = {
   createdAt: string;
   mode: "demo" | "live";
   images: Photo[];
+  photoVersion?: number;
+  photoMode?: "search" | "curated";
+  photoUpdatedAt?: string;
 };
 export type Photo = {
+  id?: string;
   url: string;
   alt: string;
   photographer: string;
   profileUrl: string;
   photoUrl: string;
   downloadLocation?: string;
+  source?: "unsplash-search" | "unsplash-curated";
+  caption?: string;
+  query?: string;
 };
 export type Job = {
   id: string;

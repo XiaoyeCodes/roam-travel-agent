@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Config } from "./config.js";
 import { safeError } from "./config.js";
 import type { ToolDef } from "./llm.js";
-import type { Evidence, Photo } from "../../shared/types.js";
+import type { Evidence } from "../../shared/types.js";
 import { dateAt } from "./schema.js";
 type ToolResult = { source: string; status: Evidence["status"]; data: unknown };
 export type BuiltinTool = {
@@ -394,24 +394,4 @@ export async function executeTool(
       data: { message: safeError(e) },
     };
   }
-}
-export async function searchPhotos(
-  config: Config,
-  query: string,
-  signal?: AbortSignal,
-): Promise<Photo[]> {
-  if (!config.unsplashKey) return [];
-  const data = await fetchJson(
-    `https://api.unsplash.com/search/photos?${new URLSearchParams({ query, per_page: "4", orientation: "landscape", content_filter: "high" })}`,
-    { headers: { Authorization: `Client-ID ${config.unsplashKey}` } },
-    signal,
-  );
-  return (data.results || []).map((p: any) => ({
-    url: p.urls.regular,
-    alt: p.alt_description || query,
-    photographer: p.user.name,
-    profileUrl: `${p.user.links.html}?utm_source=roam_travel&utm_medium=referral`,
-    photoUrl: `${p.links.html}?utm_source=roam_travel&utm_medium=referral`,
-    downloadLocation: p.links.download_location,
-  }));
 }

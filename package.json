@@ -12,7 +12,7 @@
     "build": "npm run build -w server && npm run build -w client",
     "check": "npm run check -w server && npm run check -w client",
     "start": "npm run start -w server",
-    "test": "node --import tsx --test server/tests/core.test.ts server/tests/mcp.test.ts server/tests/workflow.test.ts",
+    "test": "node --import tsx --test server/tests/core.test.ts server/tests/mcp.test.ts server/tests/workflow.test.ts server/tests/photos-html.test.ts",
     "test:ui": "node --import tsx scripts/ui-smoke.mjs",
     "test:production": "node scripts/production-smoke.mjs",
     "format": "prettier --write client/src server/src server/tests shared scripts",

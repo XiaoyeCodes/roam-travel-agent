@@ -51,11 +51,14 @@ export async function watchEvents(
     }
   }
 }
-export async function downloadPdf(id: string, filename: string) {
-  const response = await fetch(`${API}/api/trips/${id}/pdf`, {
+export async function downloadHtml(id: string, filename: string) {
+  const response = await fetch(`${API}/api/trips/${id}/html`, {
     headers: headers(),
   });
-  if (!response.ok) throw new Error((await response.json()).error);
+  if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event("roam-auth"));
+    throw new Error((await response.json()).error);
+  }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");

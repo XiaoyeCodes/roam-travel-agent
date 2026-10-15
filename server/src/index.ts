@@ -25,6 +25,8 @@ import { completion } from "./llm.js";
 import { connectMcp } from "./mcp.js";
 import { getMap } from "./maps.js";
 import { renderPdf } from "./pdf.js";
+import { renderHtml } from "./html.js";
+import { enrichPhotos, trackPhotoExport } from "./photos.js";
 import { demoPlan, exampleRequest } from "./demo.js";
 import type { TripEvent } from "../../shared/types.js";
 const app = express();
@@ -238,6 +240,43 @@ app.get(
           .parse(req.query.day)
       : undefined;
     res.json(await getMap(plan, getConfig(), day));
+  }),
+);
+app.post(
+  "/api/trips/:id/photos",
+  asyncRoute(async (req, res) => {
+    const job = getJob(String(req.params.id));
+    if (!job?.plan || job.status !== "complete") {
+      res.status(404).json({ error: "行程尚未生成" });
+      return;
+    }
+    const { force } = z
+      .object({ force: z.boolean().optional() })
+      .parse(req.body);
+    await enrichPhotos(job.plan, getConfig(), { force });
+    saveJob(job);
+    res.json(job);
+  }),
+);
+app.get(
+  "/api/trips/:id/html",
+  asyncRoute(async (req, res) => {
+    const job = getJob(String(req.params.id));
+    if (!job?.plan || job.status !== "complete") {
+      res.status(404).json({ error: "行程尚未生成" });
+      return;
+    }
+    const config = getConfig();
+    await enrichPhotos(job.plan, config);
+    saveJob(job);
+    const trackingFailures = await trackPhotoExport(job.plan, config);
+    const html = await renderHtml(job.plan, config, trackingFailures);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="roam-${job.plan.request.startDate}.html"; filename*=UTF-8''${encodeURIComponent(`${job.plan.destination}-${job.plan.days.length}日旅行手册.html`)}`,
+    );
+    res.send(html);
   }),
 );
 let pdfBusy = false;

@@ -4,7 +4,7 @@
 
 ## 立即运行
 
-需要 Node.js 20.15+，推荐 Node.js 22 LTS。Windows PDF 导出自动使用已安装的 Edge 或 Chrome。
+需要 Node.js 20.15+，推荐 Node.js 22 LTS。HTML 导出无需安装浏览器运行时；双击导出的文件即可浏览。
 
 ```powershell
 npm ci
@@ -15,7 +15,7 @@ npm run dev
 
 首次使用可复制 `.env.example` 为 `.env`，填写模型的 Base URL、模型名和 API Key；也可以启动后在「模型与工具」中配置。支持 DeepSeek 及其他 OpenAI 兼容接口。配置仅在后端使用，`.env` 不会提交到 Git。若模型返回 HTTP 402，请检查模型服务账户余额。
 
-**无需外部凭据即可点击「体验南京示例」**，体验协作动态、每日行程、路线示意、预算、历史记录与 PDF 下载。示例是固定的上海出发、2 人、南京 3 天方案，不消耗模型额度、不伪造实时数据。
+**无需外部凭据即可点击「体验南京示例」**，体验协作动态、每日行程、路线示意、预算、历史记录与 HTML 手册下载。示例是固定的上海出发、2 人、南京 3 天方案，不消耗模型额度、不伪造实时数据。
 
 ## 已实现
 
@@ -25,7 +25,7 @@ npm run dev
 - 7 位专家对应景点、往返交通、天气、酒店、地方美食、预算、路线。模型工具调用受专家权限与调用轮数限制。
 - 可配置的高德 MCP / REST、铁路和机票 MCP、Open-Meteo、Tavily、小红书/携程域名搜索、Unsplash 景区与美食图片搜索。
 - 旅行历史持久化、刷新恢复、逐日路线切换、来源详情、参考费用加总和超预算提示。
-- PDF 封面、概览、每日行程、每一天的地图编号、预算、交通、住宿、提醒和来源记录。
+- HTML 旅行手册：暖米色封面、日期切换、每日编号地图、景点图文、美食推荐、住宿交通、预算与来源；支持浏览器打印。
 - 桌面和手机响应式界面；设置弹窗支持键盘操作。
 
 ## 外部服务配置
@@ -36,13 +36,13 @@ npm run dev
 | --- | --- | --- |
 | 大模型 | `LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY` | 真实规划提示补充配置；离线演示正常工作 |
 | 高德地图 | `AMAP_KEY`，**Web 服务类型** Key | 不核验 POI/坐标；不伪装为高德底图 |
-| Unsplash | `UNSPLASH_ACCESS_KEY` | 不发起动态图片搜索；首页使用署名来源的静态意象照片 |
+| Unsplash | `UNSPLASH_ACCESS_KEY` | 南京示例逐站使用精选 Unsplash 照片；其他未覆盖地点显示待配图 |
 | Tavily 搜索 | `TAVILY_API_KEY` | 搜索显示未配置；也可接入搜索 MCP |
 | 天气 | 无需 Key，Open-Meteo | 网络失败或日期超出预报窗口时保留未知 |
 | 铁路 MCP | 设置中的 MCP 服务地址，角色勾选交通 | 不生成虚构班次、时刻、余票或价格 |
 | 机票 MCP | 单独的航班查询服务，角色勾选交通 | 同上；12306 不是机票服务 |
 
-高德 Key 保存后会自动尝试官方 `https://mcp.amap.com/mcp?key=...`，同时保留后端 REST 适配器。Key 不会放到前端地图 URL，静态地图由后端获取并以内嵌图片返回。用于 PDF 的静态地图服务需要具备相应权限与额度。
+高德 Key 保存后会自动尝试官方 `https://mcp.amap.com/mcp?key=...`，同时保留后端 REST 适配器。Key 不会放到前端地图 URL，静态地图由后端获取并以内嵌图片返回。用于 HTML 手册的静态地图服务需要具备相应权限与额度。
 
 手动从三行配置文件导入模型（依次为 Key、Base URL、模型名）
 
@@ -80,7 +80,11 @@ MCP_SERVERS=[{"id":"rail","name":"12306","url":"http://127.0.0.1:8000/mcp","tran
 
 Web Search 只涵盖搜索引擎可索引内容，不保证小红书、携程的全部内容可访问。搜索摘要、POI 和模型推荐都不等于实时库存或确认价格。
 
-Unsplash 是**真实照片搜索**，并非 AI 图片生成。结果使用 API 原图地址并显示摄影师与 Unsplash 链接。当前 PDF 保留地图与行程，不下载或内嵌图库照片。
+Unsplash 是**真实照片搜索**，并非 AI 图片生成。结果使用 API 原图地址并显示摄影师与 Unsplash 链接。每个景点、美食停留点关联自己的照片、摄影师和原图链接。南京示例内置经过来源核对的精选照片；未能确认具体地点或餐馆的配图明确注明取景范围。配置 Access Key 后按具体景点/菜品关键词搜索，已有行程可点「补全图片」。搜索结果属于相关配图，不代表取景已由地图核验。
+
+导出为单个 `.html` 文件，内含 CSS、章节和日期切换脚本、行程数据与每日地图。图库照片按 Unsplash 要求保留原站链接，需要联网显示；文字、预算和内嵌地图可离线查看。导出会向 Unsplash 的 `download_location` 报告 API 照片使用，不把密钥写入文件。搜索有缓存、并发和请求上限；未找到照片或请求失败时使用有来源的精选配图或明确留空。
+
+手册采用暖米色与棕金色排版，内置行程规划、住宿交通、景点介绍、美食推荐和出行锦囊章节。HTML 对行程文字转义，并用 CSP 限定脚本和图片来源。
 
 ## 架构与目录
 
@@ -96,14 +100,17 @@ server/src/
   mcp.ts                MCP 动态发现与查询权限
   tools.ts              地图、天气、搜索、票务状态、预算、图片
   maps.ts               高德静态地图与明确标注的示意图
-  pdf.ts                中文 HTML → Chromium PDF
+  html.ts               可独立打开的 HTML 旅行手册
+  photos.ts             逐站图片搜索、缓存、导出使用记录
+  photo-catalog.ts      南京精选照片与来源
+  pdf.ts                旧 PDF 接口兼容
   schema.ts             输入和输出校验、日期、金额计算
   store.ts              本地持久化、任务事件与取消
 shared/types.ts         前后端共享数据类型
 server/tests/           规则、MCP 协议与全流程测试
-scripts/ui-smoke.mjs    桌面/手机 UI 与真实 PDF 下载检查
+scripts/ui-smoke.mjs    桌面/手机 UI 与真实 HTML 手册下载检查
 .data/                  本机配置与旅行记录，不提交 Git
-output/                 检查截图与演示 PDF，不提交 Git
+output/                 检查截图与演示手册，不提交 Git
 ```
 
 ```mermaid
@@ -121,7 +128,7 @@ flowchart TD
   Q --> R2[路线回应与修订]
   R2 --> P[总规划师]
   P --> V[结构校验 / 日期 / 金额 / 地点核验]
-  V --> UI[Web 行程与 PDF]
+  V --> UI[Web 图文行程与 HTML 手册]
 ```
 
 模型调用在后端执行。初始专家各有独立上下文；下游专家收到上游报告和证据，交叉审阅产生明确的收件人消息，路线专家再回应。界面呈现业务结论和工具状态，不展示模型内部推理。
@@ -139,9 +146,9 @@ npm run test:production
 npm run test:ui
 ```
 
-单元/集成测试使用隔离的本地模型服务和本地 MCP 服务，不消耗真实模型额度。覆盖跨月日期、未知预算、工具权限、真实 MCP HTTP 协商、函数调用、7 位专家、交叉审阅、坐标防伪、缺失天气、402 错误和任务取消。UI 检查涵盖桌面/390px 手机界面、示例流程、路线切换、预算、配置、历史恢复、PDF 下载和无横向溢出。
+单元/集成测试使用隔离的本地模型服务和本地 MCP 服务，不消耗真实模型额度。覆盖跨月日期、未知预算、工具权限、真实 MCP HTTP 协商、函数调用、7 位专家、交叉审阅、坐标防伪、缺失天气、402 错误和任务取消。UI 检查涵盖桌面/390px 手机界面、示例流程、路线切换、预算、配置、历史恢复、HTML 手册下载和无横向溢出。
 
-已验证本地演示、模型与 MCP 模拟服务、生产构建和 PDF 导出。真实模型规划及高德、铁路/机票、Tavily、Unsplash 查询仍需配置有效凭据并进行实网验证。
+已验证本地演示、模型与 MCP 模拟服务、生产构建和 HTML 导出。真实模型规划及高德、铁路/机票、Tavily、Unsplash 查询仍需配置有效凭据并进行实网验证。
 
 ## 生产构建与部署
 
@@ -152,7 +159,7 @@ npm start
 
 生产模式由后端提供 `client/dist` 静态资源，访问 <http://127.0.0.1:8787/>。前端仍是独立构建产物，可放到独立静态站点，通过 `VITE_API_BASE` 指定 API 地址；跨域时在后端设置 `ALLOWED_ORIGINS`。
 
-PDF 自动探测 Windows Edge/Chrome、macOS Chrome、Linux Chromium。找不到时设置 `BROWSER_EXECUTABLE_PATH`。界面字体优先本机字体，中文标题可加载 Google Fonts；网络不可用时自动回退。
+HTML 导出无需 Chromium。UI 自动化测试及保留的旧 PDF 接口自动探测 Windows Edge/Chrome、macOS Chrome、Linux Chromium，找不到时设置 `BROWSER_EXECUTABLE_PATH`。界面字体优先本机字体，中文标题可加载 Google Fonts；网络不可用时自动回退。
 
 提供 `Dockerfile` 与 `compose.yaml`，镜像包含 Chromium 和中文字体。部署前在 `.env` 设置强随机 `APP_ACCESS_TOKEN`，随后
 
@@ -175,4 +182,4 @@ docker compose up --build -d
 - [Tavily Search](https://docs.tavily.com/documentation/api-reference/endpoint/search)
 - [Unsplash API 文档](https://unsplash.com/documentation)
 
-首页山水照片来自 [Unsplash 漓江图片](https://unsplash.com/s/photos/li-river)，仅用于旅行意象展示；南京示例的照片搜索不会伪装成已完成。
+首页山水照片来自 [Unsplash 漓江图片](https://unsplash.com/s/photos/li-river)，仅用于旅行意象展示；南京示例配图来源见 `server/src/photo-catalog.ts`，每张图片都保留原始 Unsplash 页面。

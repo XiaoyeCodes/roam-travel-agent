@@ -71,6 +71,7 @@ export const planSchema = z.object({
               cost: z.number().min(0).nullable(),
               tip: text,
               sourceIds: z.array(z.string()).default([]),
+              photoQuery: z.string().max(160).optional(),
             }),
           )
           .min(1)

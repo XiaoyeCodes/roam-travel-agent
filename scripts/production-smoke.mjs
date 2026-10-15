@@ -94,6 +94,28 @@ try {
   assert.ok(replay.includes("event: closed"));
   const invalidMap = await fetch(`${base}/api/trips/${created.id}/map?day=99`);
   assert.equal(invalidMap.status, 400);
+  const legacy = await (
+    await fetch(base + "/api/demo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+  ).json();
+  const enriched = await (
+    await fetch(base + "/api/trips/" + legacy.id + "/photos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+  ).json();
+  assert.equal(enriched.plan.images.length, 10);
+  const htmlResponse = await fetch(base + "/api/trips/" + legacy.id + "/html");
+  assert.ok(htmlResponse.headers.get("content-type").includes("text/html"));
+  assert.ok(htmlResponse.headers.get("content-disposition").includes(".html"));
+  const exportedHtml = await htmlResponse.text();
+  assert.equal((exportedHtml.match(/data-day-panel="/g) || []).length, 3);
+  assert.ok(exportedHtml.includes("images.unsplash.com"));
+  assert.ok(exportedHtml.includes("Content-Security-Policy"));
   const env = fs.existsSync(".env")
     ? dotenv.parse(fs.readFileSync(".env"))
     : {};
@@ -115,13 +137,14 @@ try {
     0,
     "A model key was found outside ignored local configuration",
   );
+  assert.ok(!env.LLM_API_KEY || !exportedHtml.includes(env.LLM_API_KEY));
   const bundle = fs.readFileSync(
     path.join("client/dist", asset.replace(/^\//, "")),
     "utf8",
   );
   assert.ok(!env.LLM_API_KEY || !bundle.includes(env.LLM_API_KEY));
   console.log(
-    "Production smoke passed: static assets, API validation, origin rejection, SSE delivery/replay, persisted demo, map bounds, and no configured secret in source or client bundle.",
+    "Production smoke passed: static assets, API validation, origin rejection, SSE delivery/replay, persisted demo, map bounds, legacy photo enrichment, HTML export, and no configured secret in source or client bundle.",
   );
 } finally {
   server.kill();

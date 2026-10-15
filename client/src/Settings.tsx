@@ -310,8 +310,7 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
                   </a>
                 </h3>
                 <p>
-                  搜索目的地与美食照片，并保留摄影师署名。图片搜索不属于 AI
-                  生图。
+                  按每个景点或菜品搜索照片，并保留摄影师署名。已有行程可点击「补全图片」更新；未配置时，南京示例使用有来源的精选照片。
                 </p>
                 {secretField(
                   "unsplashKey",

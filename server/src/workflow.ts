@@ -4,16 +4,16 @@ import type {
   AgentReport,
   Evidence,
   Job,
-  Plan,
 } from "../../shared/types.js";
 import { AGENTS } from "../../shared/types.js";
 import type { Config } from "./config.js";
 import { safeError } from "./config.js";
 import { completion, parseJson, type Message, type ToolDef } from "./llm.js";
 import { connectMcp, type ConnectedMcp } from "./mcp.js";
-import { executeTool, makeTools, searchPhotos, amap } from "./tools.js";
+import { executeTool, makeTools, amap } from "./tools.js";
 import { budgetTotals, dateAt, planSchema, reportSchema } from "./schema.js";
 import { controllers, emit, saveJob } from "./store.js";
+import { enrichPhotos } from "./photos.js";
 import { demoPlan } from "./demo.js";
 const assignments: Record<AgentId, string> = {
   attractions:
@@ -426,6 +426,8 @@ export async function runWorkflow(job: Job, config: Config) {
                 duration: "约2小时",
                 type: "attraction | food | hotel | transport",
                 description: "安排理由",
+                photoQuery:
+                  "用于 Unsplash 的英文检索短语，景点用具体地名，美食用具体菜品名，不输出图片URL",
                 cost: null,
                 tip: "提醒",
                 sourceIds: ["真实证据id"],
@@ -600,23 +602,6 @@ export async function runWorkflow(job: Job, config: Config) {
         warnings.push(
           "高德未配置，景点坐标与地图暂不可用；路线顺序为建议，非导航结果。",
         );
-      let images: Plan["images"] = [];
-      if (config.unsplashKey) {
-        publish("planner", "正在搜索目的地与美食图片", "running");
-        const photoResults = await Promise.allSettled([
-          searchPhotos(
-            config,
-            `${job.request.destination} travel landscape`,
-            signal,
-          ),
-          searchPhotos(config, `${job.request.destination} local food`, signal),
-        ]);
-        images = photoResults.flatMap((r) =>
-          r.status === "fulfilled" ? r.value : [],
-        );
-        if (photoResults.some((r) => r.status === "rejected"))
-          warnings.push("部分 Unsplash 图片搜索失败。");
-      }
       job.plan = {
         ...parsed,
         id: job.id,
@@ -629,13 +614,17 @@ export async function runWorkflow(job: Job, config: Config) {
         evidence,
         reports,
         mode: "live",
-        images,
+        images: [],
         createdAt: new Date().toISOString(),
       };
     }
+    if (job.plan) {
+      publish("planner", "正在为景点与美食匹配 Unsplash 照片", "running");
+      await enrichPhotos(job.plan, config, { signal });
+    }
     signal.throwIfAborted();
     job.status = "complete";
-    publish("planner", "行程已生成，可以查看地图与导出 PDF", "done");
+    publish("planner", "行程已生成，可以查看图文行程与导出 HTML 手册", "done");
     emit(job, {
       type: "complete",
       agent: "planner",
