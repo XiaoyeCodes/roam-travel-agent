@@ -11,9 +11,11 @@ import {
   Plus,
   Eye,
   EyeOff,
+  Globe2,
 } from "lucide-react";
 import { AGENTS, type PublicConfig, type AgentId } from "../../shared/types";
 import { api } from "./api";
+import ApiGuide, { KeyApplicationLinks } from "./ApiGuide";
 type Props = {
   config: PublicConfig;
   onClose: () => void;
@@ -21,7 +23,9 @@ type Props = {
   notify: (message: string) => void;
 };
 export default function Settings({ config, onClose, onSaved, notify }: Props) {
-  const [tab, setTab] = useState<"model" | "tools" | "mcp">("model");
+  const [tab, setTab] = useState<"model" | "tools" | "mcp" | "resources">(
+    "model",
+  );
   const [values, setValues] = useState({
     baseUrl: config.baseUrl,
     model: config.model,
@@ -42,6 +46,10 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
     roles: ["transport"] as AgentId[],
   });
   const dialog = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    content.current?.scrollTo({ top: 0 });
+  }, [tab]);
   useEffect(() => {
     const before = document.activeElement as HTMLElement;
     dialog.current?.focus();
@@ -225,6 +233,7 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
               { id: "model", label: "大模型", icon: Cpu },
               { id: "tools", label: "外部工具", icon: KeyRound },
               { id: "mcp", label: "MCP 服务", icon: Plug },
+              { id: "resources", label: "申请入口", icon: Globe2 },
             ] as const
           ).map((t) => (
             <button
@@ -237,7 +246,10 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
             </button>
           ))}
         </div>
-        <div className="settings-content">
+        <div className="settings-content" ref={content}>
+          {tab === "resources" && (
+            <ApiGuide config={config} onConfigure={setTab} />
+          )}
           {tab === "model" && (
             <>
               <div className="provider-banner">
@@ -271,6 +283,7 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
                 />
               </label>
               {secretField("apiKey", "API Key", config.hasLlmKey)}
+              <KeyApplicationLinks service="apiKey" />
               <div className="gentle-note">
                 <KeyRound size={16} />
                 <span>
@@ -282,33 +295,16 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
           {tab === "tools" && (
             <div className="tool-settings">
               <div>
-                <h3>
-                  高德地图{" "}
-                  <a
-                    href="https://console.amap.com/dev/key/app"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    申请 Key <ArrowUpRight size={13} />
-                  </a>
-                </h3>
+                <h3>高德地图</h3>
                 <p>
-                  POI、酒店、餐馆、自驾路线和 PDF 静态地图。填入 Web 服务 Key
+                  POI、酒店、餐馆、自驾路线和 HTML 手册地图。填入 Web 服务 Key
                   后自动启用高德 MCP。
                 </p>
                 {secretField("amapKey", "高德 Web 服务 Key", config.hasAmapKey)}
+                <KeyApplicationLinks service="amapKey" />
               </div>
               <div>
-                <h3>
-                  Unsplash 图片{" "}
-                  <a
-                    href="https://unsplash.com/developers"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    开发者平台 <ArrowUpRight size={13} />
-                  </a>
-                </h3>
+                <h3>Unsplash 图片</h3>
                 <p>
                   按每个景点或菜品搜索照片，并保留摄影师署名。已有行程可点击「补全图片」更新；未配置时，南京示例使用有来源的精选照片。
                 </p>
@@ -317,24 +313,17 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
                   "Access Key",
                   config.hasUnsplashKey,
                 )}
+                <KeyApplicationLinks service="unsplashKey" />
               </div>
               <div>
-                <h3>
-                  Web Search{" "}
-                  <a
-                    href="https://app.tavily.com/"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Tavily <ArrowUpRight size={13} />
-                  </a>
-                </h3>
+                <h3>Web Search</h3>
                 <p>查询可被搜索引擎索引的小红书、携程与公开攻略。</p>
                 {secretField(
                   "searchKey",
                   "Tavily API Key",
                   config.hasSearchKey,
                 )}
+                <KeyApplicationLinks service="searchKey" />
               </div>
               <div className="gentle-note">
                 <Check size={17} />
@@ -351,6 +340,15 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
                 接入铁路、机票或其他查询服务。支持 Streamable HTTP 与
                 SSE；每个服务只分配给指定专家。
               </p>
+              <a
+                className="api-guide-link"
+                href="https://github.com/Joooook/12306-mcp"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                12306 MCP 社区项目与部署说明
+                <ArrowUpRight size={13} />
+              </a>
               {config.mcpServers.map((s) => (
                 <div className="mcp-row" key={s.id}>
                   <Plug size={20} />
@@ -479,7 +477,7 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
             </div>
           )}
         </div>
-        {tab !== "mcp" && (
+        {(tab === "model" || tab === "tools") && (
           <div className="modal-footer">
             <button
               className="button secondary"

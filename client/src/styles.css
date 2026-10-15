@@ -2443,8 +2443,10 @@ main {
 .settings-tabs {
   display: flex;
   padding: 0 30px;
-  gap: 25px;
+  gap: 18px;
   border-bottom: 1px solid #e5ebda;
+  overflow-x: auto;
+  flex-shrink: 0;
 }
 .settings-tabs > button {
   display: flex;
@@ -2455,6 +2457,8 @@ main {
   background: none;
   font-size: 11px;
   border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .settings-tabs > button.active {
   color: #6d8d56;
@@ -2467,6 +2471,112 @@ main {
 }
 .settings-content > .field {
   margin-bottom: 20px;
+}
+.key-application-help {
+  margin: 12px 0 18px;
+  padding: 14px 15px;
+  background: #f0f4e9;
+  border: 1px solid #e3e9d9;
+  border-radius: 8px;
+}
+.key-application-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 18px;
+}
+.key-application-links a,
+.api-guide-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #557443;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  line-height: 1.8;
+}
+.key-application-links a:first-child {
+  font-weight: 500;
+}
+.key-application-help p,
+.tool-settings .key-application-help p {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.9;
+  color: #7c886d;
+}
+.api-guide {
+  display: grid;
+  gap: 15px;
+}
+.api-guide-intro h3 {
+  font-family: var(--serif);
+  font-size: 20px;
+  color: #5a744b;
+}
+.api-guide-intro p,
+.api-guide-card > p {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #7b886e;
+  margin: 9px 0 14px;
+}
+.api-guide-card {
+  background: #fff;
+  border: 1px solid #e3e8db;
+  border-radius: 10px;
+  padding: 18px;
+}
+.api-guide-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.api-guide-heading h3 {
+  font-size: 14px;
+  color: #587247;
+  font-weight: 500;
+}
+.api-guide-heading .pill {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  white-space: nowrap;
+}
+.api-guide-card .key-application-help {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 12px 0;
+}
+.api-guide-configure {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 13px;
+  padding: 10px 12px;
+  background: #f3f6ee;
+  border-radius: 6px;
+  color: #6b8259;
+  font-size: 11px;
+  text-align: left;
+  border: 0;
+}
+@media (max-width: 720px) {
+  .api-guide-card {
+    padding: 15px;
+  }
+  .key-application-links {
+    gap: 8px 14px;
+  }
+  .key-application-links a,
+  .api-guide-link {
+    font-size: 11px;
+  }
+  .api-guide-intro h3 {
+    font-size: 18px;
+  }
 }
 .provider-banner {
   display: flex;
