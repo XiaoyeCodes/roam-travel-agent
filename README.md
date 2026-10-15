@@ -1,185 +1,229 @@
-# 山行 Roam · 多智能体旅行规划
+<div align="center">
 
-可在本机运行的前后端分离 Web 应用。React 界面、Node.js API、OpenAI 兼容模型接口，包含 7 位专家和 1 位总规划师。
+# 山行 Roam
 
-## 立即运行
+**把向往，写成旅程。**
 
-需要 Node.js 20.15+，推荐 Node.js 22 LTS。HTML 导出无需安装浏览器运行时；双击导出的文件即可浏览。
+由 7 位专家与 1 位总规划师协作的旅行规划 Web 应用。<br/>
+从目的地、日期与预算出发，整理景点、美食、交通、住宿与天气，生成图文行程和可携带的 HTML 旅行手册。
 
-```powershell
+<p>
+  <img src="https://img.shields.io/badge/React-19-52775F?style=flat-square" alt="React 19" />
+  <img src="https://img.shields.io/badge/TypeScript-5-52775F?style=flat-square" alt="TypeScript 5" />
+  <img src="https://img.shields.io/badge/Model-DeepSeek%20%2F%20OpenAI%20Compatible-9B7955?style=flat-square" alt="DeepSeek / OpenAI 兼容接口" />
+  <img src="https://img.shields.io/badge/Tools-MCP-9B7955?style=flat-square" alt="MCP 工具接入" />
+</p>
+
+[界面预览](#preview) · [快速开始](#quickstart) · [多智能体协作](#agents) · [服务配置](#configuration) · [开发与部署](#development)
+
+</div>
+
+![山行 Roam 真实规划首页](docs/screenshots/01-planner.png)
+
+<p align="center"><sub>目的地、预算、兴趣与节奏，在一个页面安排妥当。</sub></p>
+
+> **可以先体验，再配置。** 启动后点击「体验南京示例」，无需外部 Key，即可查看每日行程、协作记录、预算、路线示意和 HTML 导出。示例是固定的上海出发、双人南京三日方案，不调用大模型。
+
+## 一次规划，照顾完整旅程
+
+| 能力                 | 使用体验                                                                     |
+| -------------------- | ---------------------------------------------------------------------------- |
+| **按你的偏好规划**   | 支持 1–14 天、同行人数、全程总预算、交通方式、兴趣、旅行节奏与补充需求。     |
+| **多位专家共同完成** | 景点、交通、天气、住宿、美食并行研究，再做预算核算、路线整合和交叉审阅。     |
+| **看见协作与依据**   | SSE 更新任务状态，保留专家建议、工具来源与待确认事项；长任务支持取消。       |
+| **每一站都有画面**   | 景点与美食逐站关联 Unsplash 照片，展示摄影师、来源和取景说明。               |
+| **路线与预算一起看** | 按天切换地点编号，拆分全体旅客的全程费用，提示超预算及未知金额。             |
+| **把计划带走**       | 一键导出独立 HTML 手册，支持章节、日期切换与浏览器打印；历史行程保存在本机。 |
+
+<a id="preview"></a>
+
+## 界面预览
+
+以下均为本地运行项目的真实截图，行程及协作内容来自内置南京示例。截图中的地图为**游览顺序示意图**；接入高德 Web 服务 Key 后可使用高德静态底图。点击图片可查看原图。
+
+### 每日行程 · 让每一站有时间、有画面
+
+图文时间轴串起景点和美食，旁边保留当日地点分布、费用余量与出行提醒。
+
+![每日行程、逐站 Unsplash 照片与预算侧栏](docs/screenshots/02-itinerary.png)
+
+### 从信息到决定 · 路线、预算与专家协作
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/03-route-map.png"><img src="docs/screenshots/03-route-map.png" alt="按天着色的游览顺序示意图" width="100%" /></a>
+      <p><strong>逐日路线</strong><br/><sub>日期用颜色区分，停留点用编号对应。此图为未配置高德时的演示示意。</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/04-budget.png"><img src="docs/screenshots/04-budget.png" alt="交通、酒店、餐饮、门票和预留的预算明细" width="100%" /></a>
+      <p><strong>预算明细</strong><br/><sub>按全体旅客、整个行程核算，列出各项估算依据与参考余量。</sub></p>
+    </td>
+  </tr>
+</table>
+
+![专家任务状态、交流建议与结论](docs/screenshots/05-collaboration.png)
+
+<p align="center"><sub>专家分工、交叉建议与结论在同一页面呈现。截图中的消息为演示记录。</sub></p>
+
+### HTML 旅行手册 · 一份可以带走的计划
+
+暖米色版式、目的地封面、每日地图与图文卡片，汇集行程规划、住宿交通、景点介绍、美食推荐和出行锦囊。
+
+![实际导出的 HTML 旅行手册](docs/screenshots/06-html-guide.png)
+
+文字、预算和内嵌地图可离线查看；Unsplash 照片保留原站链接，需要联网加载。导出 HTML 本身无需安装 Chromium。
+
+<details>
+<summary><strong>更多界面：API Key 申请入口与手机端行程</strong></summary>
+
+<p>设置内提供 DeepSeek、高德、Unsplash、Tavily 的申请链接、官方指南和填写位置。窄屏下，行程时间轴与图片自动适配。</p>
+
+<table>
+  <tr>
+    <td width="60%" valign="top" align="center">
+      <a href="docs/screenshots/07-settings.png"><img src="docs/screenshots/07-settings.png" alt="设置中的 API Key 申请入口" width="420" /></a>
+    </td>
+    <td width="40%" valign="top" align="center">
+      <a href="docs/screenshots/08-mobile.png"><img src="docs/screenshots/08-mobile.png" alt="390 像素手机端的真实每日行程" width="270" /></a>
+    </td>
+  </tr>
+</table>
+
+</details>
+
+<a id="quickstart"></a>
+
+## 快速开始
+
+需要 **Node.js 20.15+**，可使用与 Docker 镜像一致的 Node.js 22。
+
+```bash
+git clone https://github.com/XiaoyeCodes/roam-travel-agent.git
+cd roam-travel-agent
 npm ci
 npm run dev
 ```
 
-打开 <http://127.0.0.1:5173/>，后端位于 <http://127.0.0.1:8787/>。也可以在 PowerShell 中运行项目内的 `启动山行.ps1`。按 Ctrl+C 停止服务。
+打开 [http://127.0.0.1:5173](http://127.0.0.1:5173/)。开发 API 位于 `http://127.0.0.1:8787`；按 `Ctrl+C` 停止服务。Windows 也可以运行项目内的 [启动山行.ps1](启动山行.ps1)。
 
-首次使用可复制 `.env.example` 为 `.env`，填写模型的 Base URL、模型名和 API Key；也可以启动后在「模型与工具」中配置。支持 DeepSeek 及其他 OpenAI 兼容接口。配置仅在后端使用，`.env` 不会提交到 Git。若模型返回 HTTP 402，请检查模型服务账户余额。
+1. **先看效果**：点击「体验南京示例」，浏览行程并下载 HTML 手册。
+2. **连接模型**：进入「模型与工具 → 大模型」，填写 Base URL、模型名和 API Key。
+3. **按需接入工具**：在「外部工具」配置地图、图片与搜索，在「MCP 服务」接入票务等查询能力。
+4. **生成自己的旅行**：填写目的地、日期、预算和偏好，点击「生成我的旅行」。
 
-**无需外部凭据即可点击「体验南京示例」**，体验协作动态、每日行程、路线示意、预算、历史记录与 HTML 手册下载。示例是固定的上海出发、2 人、南京 3 天方案，不消耗模型额度、不伪造实时数据。
+也支持复制 [.env.example](.env.example) 为 `.env` 后配置。模型请求与密钥使用均在后端，设置接口仅返回配置状态。
 
-## 已实现
+<a id="agents"></a>
 
-- 出发地、目的地、日期、1–14 天行程、人数、全体总预算、交通方式、兴趣、旅行节奏和补充需求。
-- 5 位信息专家并行研究，预算和路线整合，再由天气与预算专家交叉审阅，路线专家回应、修订，最后总规划师输出经过结构校验的方案。
-- 独立模型对话上下文、函数工具调用、带收件人的专家消息、共享证据、SSE 实时事件、取消任务、失败原因展示和一次结构修复。
-- 7 位专家对应景点、往返交通、天气、酒店、地方美食、预算、路线。模型工具调用受专家权限与调用轮数限制。
-- 可配置的高德 MCP / REST、铁路和机票 MCP、Open-Meteo、Tavily、小红书/携程域名搜索、Unsplash 景区与美食图片搜索。
-- 旅行历史持久化、刷新恢复、逐日路线切换、来源详情、参考费用加总和超预算提示。
-- HTML 旅行手册：暖米色封面、日期切换、每日编号地图、景点图文、美食推荐、住宿交通、预算与来源；支持浏览器打印。
-- 桌面和手机响应式界面；设置弹窗支持键盘操作。
+## 多智能体协作
 
-## 外部服务配置
-
-可以直接在页面侧栏「模型与工具」填写，保存后用于下一次规划。密钥字段留空表示保留原值；配置接口只返回是否已配置，不回传密钥。配置覆盖保存在 `.data/config.json`；如需清除，可以使用配置 API 的 `clearKeys` 或手动移除本地配置中的对应字段。
-
-| 服务 | 配置 | 未配置时的行为 |
-| --- | --- | --- |
-| 大模型 | `LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY` | 真实规划提示补充配置；离线演示正常工作 |
-| 高德地图 | `AMAP_KEY`，**Web 服务类型** Key | 不核验 POI/坐标；不伪装为高德底图 |
-| Unsplash | `UNSPLASH_ACCESS_KEY` | 南京示例逐站使用精选 Unsplash 照片；其他未覆盖地点显示待配图 |
-| Tavily 搜索 | `TAVILY_API_KEY` | 搜索显示未配置；也可接入搜索 MCP |
-| 天气 | 无需 Key，Open-Meteo | 网络失败或日期超出预报窗口时保留未知 |
-| 铁路 MCP | 设置中的 MCP 服务地址，角色勾选交通 | 不生成虚构班次、时刻、余票或价格 |
-| 机票 MCP | 单独的航班查询服务，角色勾选交通 | 同上；12306 不是机票服务 |
-
-高德 Key 保存后会自动尝试官方 `https://mcp.amap.com/mcp?key=...`，同时保留后端 REST 适配器。Key 不会放到前端地图 URL，静态地图由后端获取并以内嵌图片返回。用于 HTML 手册的静态地图服务需要具备相应权限与额度。
-
-手动从三行配置文件导入模型（依次为 Key、Base URL、模型名）
-
-```powershell
-npm run import-config -- "C:\path\to\model-config.txt"
-```
-
-### MCP 服务
-
-支持 Streamable HTTP 和 SSE，可配置 Bearer Token、服务名称和分配专家。设置中的「测试」会实际连接并列出允许的查询工具数。铁路社区项目示例
-
-```powershell
-npx -y 12306-mcp --port 8000
-```
-
-将该服务实际打印的 MCP 端点填入设置。HTTP 端点通常为 `/mcp`，旧服务也可能是 `/sse`；按所用服务文档选择。该命令不会由本项目自动执行。
-
-也可在 `.env` 中配置
-
-```dotenv
-MCP_SERVERS=[{"id":"rail","name":"12306","url":"http://127.0.0.1:8000/mcp","transport":"http","roles":["transport"]}]
-```
-
-角色可用 `attractions`、`transport`、`weather`、`hotel`、`food`、`budget`、`route`。高级配置可提供 `allowedTools` 限定具体工具名。购买、付款、删除、提交、执行命令等工具始终被排除；本应用只规划，不进行预订。
-
-## 数据口径
-
-总预算是**全体旅客整个行程**的预算。住宿按房间和晚数，交通按往返和人数；模型输出的分项由后端重新求和。未知金额使用 `null` 并单独计数，不能把合计当作完整价格。模型给出的费用统一标为参考估算。
-
-地点坐标仅来自高德 POI 核验，采用 GCJ-02。模型自报坐标不会用于地图。图上折线表示游览顺序，**不是道路导航路线**。高德静态图总览受 10 个标注、4 条折线限制，界面会说明截断；每一天单独导出的地图包含当天地点。
-
-没有高德 Key 时，演示方案显示「非高德底图」的游览顺序示意；真实方案如无核验坐标，则展示待接入说明。配置 Key 后重新生成行程即可获得坐标与高德地图；已生成的演示方案也可以在导出时取得底图。
-
-天气只使用工具返回且覆盖指定日期的预报。超出预报窗口的日子不按历史均值冒充预报。Open-Meteo 免费接口适用于非商业用途，商业部署需评估其服务方案。
-
-Web Search 只涵盖搜索引擎可索引内容，不保证小红书、携程的全部内容可访问。搜索摘要、POI 和模型推荐都不等于实时库存或确认价格。
-
-Unsplash 是**真实照片搜索**，并非 AI 图片生成。结果使用 API 原图地址并显示摄影师与 Unsplash 链接。每个景点、美食停留点关联自己的照片、摄影师和原图链接。南京示例内置经过来源核对的精选照片；未能确认具体地点或餐馆的配图明确注明取景范围。配置 Access Key 后按具体景点/菜品关键词搜索，已有行程可点「补全图片」。搜索结果属于相关配图，不代表取景已由地图核验。
-
-导出为单个 `.html` 文件，内含 CSS、章节和日期切换脚本、行程数据与每日地图。图库照片按 Unsplash 要求保留原站链接，需要联网显示；文字、预算和内嵌地图可离线查看。导出会向 Unsplash 的 `download_location` 报告 API 照片使用，不把密钥写入文件。搜索有缓存、并发和请求上限；未找到照片或请求失败时使用有来源的精选配图或明确留空。
-
-手册采用暖米色与棕金色排版，内置行程规划、住宿交通、景点介绍、美食推荐和出行锦囊章节。HTML 对行程文字转义，并用 CSP 限定脚本和图片来源。
-
-## 架构与目录
-
-```text
-client/                 React + Vite + TypeScript
-  src/App.tsx           规划表单、行程、预算、协作与历史
-  src/Settings.tsx      模型和工具设置
-  src/MapView.tsx       地图与每天的景点编号
-server/src/
-  index.ts              HTTP API、SSE、来源校验、访问口令
-  workflow.ts           多智能体编排、交流、审阅与汇总
-  llm.ts                OpenAI 兼容模型驱动
-  mcp.ts                MCP 动态发现与查询权限
-  tools.ts              地图、天气、搜索、票务状态、预算、图片
-  maps.ts               高德静态地图与明确标注的示意图
-  html.ts               可独立打开的 HTML 旅行手册
-  photos.ts             逐站图片搜索、缓存、导出使用记录
-  photo-catalog.ts      南京精选照片与来源
-  pdf.ts                旧 PDF 接口兼容
-  schema.ts             输入和输出校验、日期、金额计算
-  store.ts              本地持久化、任务事件与取消
-shared/types.ts         前后端共享数据类型
-server/tests/           规则、MCP 协议与全流程测试
-scripts/ui-smoke.mjs    桌面/手机 UI 与真实 HTML 手册下载检查
-.data/                  本机配置与旅行记录，不提交 Git
-output/                 检查截图与演示手册，不提交 Git
-```
+每位专家拥有独立对话上下文和工具权限。信息专家先并行研究，预算与路线专家整合结果；天气、预算专家再审阅路线，由路线专家回应并修订，最后交给总规划师生成结构化方案。
 
 ```mermaid
 flowchart TD
-  U[用户需求] --> S[任务编排器]
-  S --> A[景点专家]
-  S --> T[交通专家]
-  S --> W[天气专家]
-  S --> H[酒店专家]
-  S --> F[美食专家]
-  A & T & W & H & F --> E[共享证据与专家消息]
-  E --> B[预算核算]
-  B --> R[路线初稿]
-  R --> Q[天气与预算交叉审阅]
-  Q --> R2[路线回应与修订]
-  R2 --> P[总规划师]
-  P --> V[结构校验 / 日期 / 金额 / 地点核验]
-  V --> UI[Web 图文行程与 HTML 手册]
+    U["目的地 · 日期 · 偏好 · 总预算"] --> O["任务编排器"]
+    subgraph Research["并行研究"]
+        A["景点专家"]
+        T["交通专家"]
+        W["天气专家"]
+        H["酒店专家"]
+        F["美食专家"]
+    end
+    O --> A & T & W & H & F
+    A & T & W & H & F --> E["共享证据与专家建议"]
+    E --> B["预算专家 · 核算费用"]
+    B --> R["路线专家 · 行程初稿"]
+    R --> Q["天气与预算交叉审阅"]
+    Q --> R2["路线回应与修订"]
+    R2 --> P["总规划师 · 汇总与结构校验"]
+    P --> WEB["图文行程 / 路线 / 预算"]
+    P --> HTML["HTML 旅行手册"]
+    classDef green fill:#edf3e9,stroke:#72936c,color:#314b3a
+    classDef gold fill:#f7efe4,stroke:#b99468,color:#705337
+    class A,T,W,H,F,B,R,R2 green
+    class O,E,Q,P,WEB,HTML gold
 ```
 
-模型调用在后端执行。初始专家各有独立上下文；下游专家收到上游报告和证据，交叉审阅产生明确的收件人消息，路线专家再回应。界面呈现业务结论和工具状态，不展示模型内部推理。
+| 专家        | 主要职责                                                      |
+| ----------- | ------------------------------------------------------------- |
+| 景点 / 美食 | 根据偏好搜索 POI 与公开攻略，整理景点、菜品、餐馆及预约提醒。 |
+| 交通 / 酒店 | 查询往返票务、自驾方案与住宿片区，标记尚未确认的班次或房价。  |
+| 天气        | 查询覆盖出行日期的预报，提出雨天备选和路线调整建议。          |
+| 预算        | 核算往返、市内交通、住宿、餐饮、门票与弹性预留。              |
+| 路线        | 结合距离、时长、天气和预算安排每日行程，并回应审阅意见。      |
+| 总规划师    | 汇总专家结论，输出经过日期、金额和结构校验的最终方案。        |
 
-当前是单用户、单进程本地应用；并行任务最多 3 个，专家工具调用最多 4 轮，每轮执行最多 4 个工具。长请求可取消。服务重启会将未完成任务标为中断，可重新规划。任务与设置以本地 JSON 保存；多人部署需要增加账户隔离、数据库和持久任务队列。
+更多实现细节见 [架构与目录](docs/ARCHITECTURE.md)。
 
-## 验证
+<a id="configuration"></a>
 
-```powershell
-npm run check
-npm test
-npm run build
-npm run test:production
-# 另一个终端保持 npm run dev 运行
-npm run test:ui
+## 服务配置
+
+在 **「模型与工具 → 申请入口」** 可以直接打开申请页面并查看填写说明。
+
+| 服务                       | 用途                                | 配置 / 申请入口                                                                                        |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| DeepSeek / OpenAI 兼容模型 | 专家分析、讨论与最终规划            | `LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY` · [DeepSeek 控制台](https://platform.deepseek.com/api_keys) |
+| 高德地图                   | POI、酒店、餐馆、自驾路线、静态底图 | `AMAP_KEY`，选择 **Web 服务** · [高德控制台](https://console.amap.com/dev/key/app)                     |
+| Unsplash                   | 景点、美食相关照片                  | `UNSPLASH_ACCESS_KEY`，填写 **Access Key** · [创建应用](https://unsplash.com/oauth/applications)       |
+| Tavily                     | 公开攻略与网页搜索                  | `TAVILY_API_KEY` · [Tavily 控制台](https://app.tavily.com/)                                            |
+| Open-Meteo                 | 目的地天气预报                      | 当前接入端点无需 Key · [服务说明](https://open-meteo.com/en/docs)                                      |
+| 铁路 / 机票 MCP            | 列车与航班查询                      | 在设置中填写 HTTP / SSE 服务地址 · [12306 社区实现](https://github.com/Joooook/12306-mcp)              |
+
+铁路与机票需分别接入；12306 MCP 只负责铁路。MCP 支持 Bearer Token、按专家分配工具及连接测试。完整配置、密钥导入、工具权限和数据口径见 [配置指南](docs/CONFIGURATION.md)。
+
+### 数据如何呈现
+
+- **费用**以人民币、全体旅客、整个行程计算。未知费用单独标记，参考估算不等于实际报价。
+- **地图**只使用核验坐标；连线表示游览顺序。没有高德 Key 时，示例使用明确标注的顺序示意图。
+- **天气与票务**保留查询状态；日期超出预报范围、服务未接入或查询失败时显示待确认。
+- **图片**来自 Unsplash 搜索或有来源的精选图库；相关配图不等于推荐地点或餐馆的实拍。
+- **使用范围**为单用户、单进程应用，负责查询与规划；不下单、不支付。多人部署需增加账户隔离、数据库与任务队列。
+
+<a id="development"></a>
+
+## 开发与部署
+
+React 19 + Vite + TypeScript 构建前端；Express + TypeScript 提供 API；MCP SDK 连接外部查询工具，SSE 推送协作事件，Zod 校验输入与模型输出。
+
+```text
+client/src/        规划界面、行程、设置、地图与响应式布局
+server/src/        智能体编排、模型驱动、MCP、图片和 HTML 导出
+shared/            前后端共享类型
+server/tests/      规则、MCP 协议、协作流程与导出测试
+scripts/           配置导入、UI 检查、生产检查与 README 截图
+docs/              配置、架构、部署文档与真实界面截图
 ```
 
-单元/集成测试使用隔离的本地模型服务和本地 MCP 服务，不消耗真实模型额度。覆盖跨月日期、未知预算、工具权限、真实 MCP HTTP 协商、函数调用、7 位专家、交叉审阅、坐标防伪、缺失天气、402 错误和任务取消。UI 检查涵盖桌面/390px 手机界面、示例流程、路线切换、预算、配置、历史恢复、HTML 手册下载和无横向溢出。
-
-已验证本地演示、模型与 MCP 模拟服务、生产构建和 HTML 导出。真实模型规划及高德、铁路/机票、Tavily、Unsplash 查询仍需配置有效凭据并进行实网验证。
-
-## 生产构建与部署
-
-```powershell
-npm run build
-npm start
+```bash
+npm run check      # TypeScript 检查
+npm test           # 本地隔离模型 / MCP 集成测试
+npm run build      # 构建前后端
+npm start          # 生产服务：http://127.0.0.1:8787
 ```
 
-生产模式由后端提供 `client/dist` 静态资源，访问 <http://127.0.0.1:8787/>。前端仍是独立构建产物，可放到独立静态站点，通过 `VITE_API_BASE` 指定 API 地址；跨域时在后端设置 `ALLOWED_ORIGINS`。
+支持独立前端部署，也提供 [Dockerfile](Dockerfile) 和 [compose.yaml](compose.yaml)。容器部署前需配置 `APP_ACCESS_TOKEN`；详细步骤、跨域设置与 UI 检查见 [开发与部署指南](docs/DEVELOPMENT.md)。
 
-HTML 导出无需 Chromium。UI 自动化测试及保留的旧 PDF 接口自动探测 Windows Edge/Chrome、macOS Chrome、Linux Chromium，找不到时设置 `BROWSER_EXECUTABLE_PATH`。界面字体优先本机字体，中文标题可加载 Google Fonts；网络不可用时自动回退。
+| 文档                                       | 内容                                             |
+| ------------------------------------------ | ------------------------------------------------ |
+| [配置与数据说明](docs/CONFIGURATION.md)    | 环境变量、API Key 申请、MCP 接入、图片与地图规则 |
+| [架构与多智能体协作](docs/ARCHITECTURE.md) | 编排流程、共享证据、目录结构、当前运行边界       |
+| [开发、验证与部署](docs/DEVELOPMENT.md)    | 本地测试、生产构建、Docker、访问口令、截图复现   |
+| [截图说明](docs/screenshots/README.md)     | 截图来源、页面对应关系与更新方法                 |
 
-提供 `Dockerfile` 与 `compose.yaml`，镜像包含 Chromium 和中文字体。部署前在 `.env` 设置强随机 `APP_ACCESS_TOKEN`，随后
+<details>
+<summary><strong>实现参考与图片来源</strong></summary>
 
-```powershell
-docker compose up --build -d
-```
-
-容器内监听 `0.0.0.0`，宿主机默认只映射到 `127.0.0.1:8787`。公网使用 HTTPS 反向代理，并将域名加入 `ALLOWED_ORIGINS`。首次进入页面需要访问口令。所有使用者共享同一个服务空间，该配置不是多人账户系统。
-
-`.env`、`.data` 和模型 Key 均已排除 Git 与 Docker 构建上下文。不要把这两个目录放到静态文件服务中。当前只在本机运行，未发布线上站点。
-
-## 实现参考
-
-- [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion/)
-- [高德 MCP 快速接入](https://developer.amap.com/api/mcp-server/gettingstarted)
-- [高德静态地图](https://developer.amap.com/api/webservice/guide/api/staticmaps/)
-- [12306 MCP 社区实现](https://github.com/Joooook/12306-mcp)
+- [DeepSeek API](https://api-docs.deepseek.com/api/create-chat-completion/)
+- [高德 MCP](https://lbs.amap.com/api/mcp-server/create-project-and-key) · [高德静态地图](https://developer.amap.com/api/webservice/guide/api/staticmaps/)
 - [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-- [Open-Meteo 预报文档](https://open-meteo.com/en/docs)
-- [Tavily Search](https://docs.tavily.com/documentation/api-reference/endpoint/search)
-- [Unsplash API 文档](https://unsplash.com/documentation)
+- [Open-Meteo](https://open-meteo.com/en/docs) · [Tavily](https://docs.tavily.com/documentation/api-reference/endpoint/search) · [Unsplash](https://unsplash.com/documentation)
 
-首页山水照片来自 [Unsplash 漓江图片](https://unsplash.com/s/photos/li-river)，仅用于旅行意象展示；南京示例配图来源见 `server/src/photo-catalog.ts`，每张图片都保留原始 Unsplash 页面。
+首页旅行照片来自 Unsplash；南京示例照片的原始页面与摄影师记录保存在 [photo-catalog.ts](server/src/photo-catalog.ts)，界面和 HTML 手册均保留署名。截图直接截取应用页面，不使用生成式界面示意图。
+
+</details>
+
+---
+
+<p align="center"><sub>山行 ROAM · 用一点智能，换多一点自由。</sub></p>
