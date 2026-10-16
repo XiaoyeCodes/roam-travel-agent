@@ -9,3 +9,5 @@ tmp/
 *.log
 playwright-report/
 .DS_Store
+__pycache__/
+*.pyc

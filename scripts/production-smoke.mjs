@@ -11,6 +11,7 @@ const server = spawn(process.execPath, ["server/dist/server/src/index.js"], {
     PORT: "8793",
     HOST: "127.0.0.1",
     ROAM_DATA_DIR: directory,
+    ROAM_TICKETS_DISABLED: "1",
     APP_ACCESS_TOKEN: "",
   },
   stdio: ["ignore", "pipe", "pipe"],

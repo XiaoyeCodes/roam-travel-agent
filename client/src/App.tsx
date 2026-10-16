@@ -58,11 +58,22 @@ import {
   type PublicConfig,
   type TripEvent,
   type TripRequest,
+  type TripSummary,
 } from "../../shared/types";
 import { api, downloadHtml, watchEvents } from "./api";
 import Settings from "./Settings";
+import HistoryCard from "./HistoryCard";
 import MapView from "./MapView";
+import { PhotoFigure } from "./StopPhoto";
+import { coverPhoto, photoMode } from "../../shared/photos";
 import StopPhoto from "./StopPhoto";
+import ProposalReview from "./ProposalReview";
+import WorkProgress from "./WorkProgress";
+import ItineraryEditor from "./ItineraryEditor";
+import { CostDetails, JourneyDetails } from "./PlanningDetails";
+import { FactBadge, StopTrust } from "./PlanQuality";
+import { PLANNING_CSS } from "../../shared/planning-styles";
+import { QUALITY_CSS } from "../../shared/quality-styles";
 const ICONS = {
   attractions: Landmark,
   transport: TrainFront,
@@ -101,17 +112,7 @@ const preferences = [
 ];
 const money = (n: number | null) =>
   n === null ? "待查询" : `¥${Math.round(n).toLocaleString("zh-CN")}`;
-type History = {
-  id: string;
-  destination: string;
-  title?: string;
-  days: number;
-  travelers: number;
-  startDate: string;
-  status: Job["status"];
-  mode: "demo" | "live";
-  createdAt: string;
-};
+type History = TripSummary;
 type Page = "planner" | "history" | "team";
 function nameOf(id: string) {
   return (
@@ -121,6 +122,12 @@ function nameOf(id: string) {
   );
 }
 export default function App() {
+  const [editorTarget, setEditorTarget] = useState<{
+    day: number;
+    stopId?: string;
+    mode?: "repair" | "journey" | "budget";
+  } | null>(null);
+  const [undoBusy, setUndoBusy] = useState(false);
   const [page, setPage] = useState<Page>("planner"),
     [form, setForm] = useState(initialForm),
     [config, setConfig] = useState<PublicConfig | null>(null),
@@ -157,6 +164,8 @@ export default function App() {
     try {
       const data = await api<Job>(`/trips/${id}`);
       setJob(data);
+      setEditorTarget(null);
+      setForm(data.request);
       setDay(1);
       setPage("planner");
       localStorage.setItem("roam-active-id", id);
@@ -218,6 +227,31 @@ export default function App() {
     return () => controller.abort();
     // The stream owns event updates until this job reaches a terminal status.
   }, [job?.id, job?.status, loadHistory, notify]);
+  useEffect(() => {
+    if (job?.status !== "awaiting_confirmation") return;
+    window.scrollTo({ top: 0, behavior: "instant" });
+    const id = job.id;
+    const proposalId = job.proposal?.id;
+    let active = true;
+    const timer = setInterval(() => {
+      void api<Job>(`/trips/${id}`)
+        .then((next) => {
+          if (active)
+            setJob((current) =>
+              current?.id === id &&
+              current.status === "awaiting_confirmation" &&
+              current.proposal?.id === proposalId
+                ? next
+                : current,
+            );
+        })
+        .catch(() => {});
+    }, 8000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [job?.id, job?.status, job?.proposal?.id]);
   const photoRequest = useRef(0);
   const refreshPhotos = useCallback(
     async (id: string, force = false) => {
@@ -228,7 +262,12 @@ export default function App() {
           method: "POST",
           body: JSON.stringify({ force }),
         });
-        setJob((current) => (current?.id === id ? updated : current));
+        setJob((current) =>
+          current?.id === id &&
+          (current.plan?.revision || 1) <= (updated.plan?.revision || 1)
+            ? updated
+            : current,
+        );
         if (force) {
           const stops = updated
             .plan!.days.flatMap((d) => d.stops)
@@ -250,7 +289,8 @@ export default function App() {
       config &&
       job.plan &&
       (job.plan.photoVersion !== PHOTO_VERSION ||
-        job.plan.photoMode !== (config.hasUnsplashKey ? "search" : "curated"))
+        job.plan.photoMode !==
+          photoMode(config.hasAmapKey, config.hasUnsplashKey))
     )
       void refreshPhotos(job.id);
   }, [
@@ -258,6 +298,7 @@ export default function App() {
     job?.status,
     job?.plan?.photoVersion,
     config?.hasUnsplashKey,
+    config?.hasAmapKey,
     refreshPhotos,
   ]);
   const busy = creating || job?.status === "running";
@@ -288,8 +329,23 @@ export default function App() {
       setCreating(false);
     }
   }
+  async function retryTrip() {
+    if (!job || creating) return;
+    setError("");
+    setCreating(true);
+    try {
+      await api<Job>(`/trips/${job.id}/retry`, { method: "POST", body: "{}" });
+      await loadJob(job.id);
+      loadHistory();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  }
   function newTrip() {
     setJob(null);
+    setEditorTarget(null);
     setError("");
     setPage("planner");
     localStorage.removeItem("roam-active-id");
@@ -310,9 +366,45 @@ export default function App() {
       setHtmlBusy(false);
     }
   }
+  const closeEditor = useCallback(() => {
+    setEditorTarget(null);
+    if (job?.id)
+      void api<Job>(`/trips/${job.id}`)
+        .then((next) =>
+          setJob((current) =>
+            current?.id === next.id &&
+            (current.plan?.revision || 1) <= (next.plan?.revision || 1)
+              ? next
+              : current,
+          ),
+        )
+        .catch(() => {});
+  }, [job?.id]);
+  function acceptEditedJob(next: Job) {
+    setJob((current) => (current?.id === next.id ? next : current));
+    loadHistory();
+    notify(`已应用修改，当前为 V${next.plan?.revision}；可以撤销上次修改。`);
+  }
+  async function undoEdit() {
+    if (!job?.plan) return;
+    setUndoBusy(true);
+    try {
+      const next = await api<Job>(`/trips/${job.id}/undo`, {
+        method: "POST",
+        body: JSON.stringify({ baseRevision: job.plan.revision || 1 }),
+      });
+      setJob((current) => (current?.id === next.id ? next : current));
+      notify("已撤销上次修改，原安排和预算已恢复。");
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setUndoBusy(false);
+    }
+  }
   const plan = job?.plan;
   return (
     <div className="app-shell">
+      <style>{QUALITY_CSS + PLANNING_CSS}</style>
       <aside className="sidebar">
         <button className="brand" onClick={newTrip} aria-label="山行首页">
           <div className="brand-mark">
@@ -711,7 +803,8 @@ export default function App() {
                     )}
                     <div className="form-bottom">
                       <span>
-                        <Network size={15} />7 位专家协作，让每一步都妥帖
+                        <Network size={15} />
+                        先选方案，再由 7 位专家细化行程
                       </span>
                       <button
                         className="button primary generate-btn"
@@ -723,7 +816,7 @@ export default function App() {
                         ) : (
                           <Sparkles size={17} />
                         )}
-                        生成我的旅行
+                        先看看旅行方案
                         <ArrowRight size={17} />
                       </button>
                     </div>
@@ -800,105 +893,90 @@ export default function App() {
                   {job.request.mode === "demo" ? "演示模式" : "智能协作"}
                 </span>
               </div>
-              <div className="working-heading">
-                <div
-                  className={`working-orb ${job.status !== "running" ? "stopped" : ""}`}
-                >
-                  <Sparkles size={29} />
-                </div>
-                <div className="eyebrow">A JOURNEY IS TAKING SHAPE</div>
-                <h1>
-                  {job.status === "running"
-                    ? `正在为你编织${job.request.destination}的时光`
-                    : "这次规划暂时停了下来"}
-                </h1>
-                <p>
-                  {job.request.origin} → {job.request.destination} ·{" "}
-                  {job.request.days} 天 · {job.request.travelers} 人 · 总预算{" "}
-                  {money(job.request.budget)}
-                </p>
-                {job.status === "running" ? (
-                  <span className="working-label">
-                    <i />
-                    专家正在检索、交流与核对细节
-                  </span>
-                ) : (
-                  <div role="alert" className="error-banner">
-                    {job.error}
-                  </div>
-                )}
-              </div>
-              <AgentGrid events={job.events} />
-              <div className="progress-layout">
-                <section className="card">
-                  <div className="section-heading">
-                    <h2>团队协作现场</h2>
-                    {job.status === "running" && (
-                      <button
-                        className="text-btn danger"
-                        onClick={() =>
-                          api(`/trips/${job.id}/cancel`, {
-                            method: "POST",
-                            body: "{}",
-                          }).catch((e) => notify(e.message))
-                        }
-                      >
-                        <CircleStop size={14} />
-                        停止规划
-                      </button>
+              {job.status === "awaiting_confirmation" && job.proposal ? (
+                <ProposalReview
+                  key={job.proposal.id}
+                  job={job}
+                  onDecision={async (decision) => {
+                    const updated = await api<Job>(
+                      `/trips/${job.id}/decision`,
+                      { method: "POST", body: JSON.stringify(decision) },
+                    );
+                    setJob((current) =>
+                      current?.id === updated.id ? updated : current,
+                    );
+                    loadHistory();
+                  }}
+                  onCancel={async () => {
+                    await api(`/trips/${job.id}/cancel`, {
+                      method: "POST",
+                      body: "{}",
+                    });
+                    await loadJob(job.id);
+                    loadHistory();
+                  }}
+                />
+              ) : (
+                <div className="working-heading work-intro">
+                  <div className="planning-title">
+                    <h1>
+                      {job.status === "running"
+                        ? `正在规划你的${job.request.destination}之旅`
+                        : "这次规划暂时停了下来"}
+                    </h1>
+                    <p>
+                      {job.request.origin} → {job.request.destination} ·{" "}
+                      {job.request.days} 天 · {job.request.travelers} 人 ·
+                      总预算 {money(job.request.budget)}
+                    </p>
+                    {job.status !== "running" && (
+                      <div role="alert" className="error-banner">
+                        {job.error}
+                      </div>
                     )}
                   </div>
-                  <EventFeed events={job.events} />
-                </section>
-                <aside className="card process-explainer">
-                  <span className="eyebrow">GOOD PLANS TAKE CARE</span>
-                  <h3>
-                    好计划，
-                    <br />
-                    也照顾小细节。
-                  </h3>
-                  {[
-                    "拆解你的出行需求",
-                    "5 位信息专家并行检索",
-                    "预算核算与路线整合",
-                    "天气、预算交叉审阅",
-                    "总规划师生成旅行手册",
-                  ].map((s, i) => (
-                    <div key={s}>
-                      <span>0{i + 1}</span>
-                      <p>{s}</p>
-                    </div>
-                  ))}
-                  <p className="fineprint">
-                    {job.request.mode === "demo"
-                      ? "演示消息用于展示协作流程，没有发起外部调用。"
-                      : "这里展示业务建议和工具状态；缺少来源的信息会标记为待确认。"}
-                  </p>
-                </aside>
-              </div>
-              {job.status !== "running" && (
-                <div className="center-actions">
-                  <button
-                    className="button primary"
-                    onClick={() => generate(job.request.mode === "demo")}
-                  >
-                    <RotateCcw size={16} />
-                    重新规划
-                  </button>
-                  <button
-                    className="button secondary"
-                    onClick={() => setSettings(true)}
-                  >
-                    检查模型配置
-                  </button>
-                  <button
-                    className="button secondary"
-                    onClick={() => generate(true)}
-                  >
-                    体验示例
-                  </button>
+                  {job.status === "running" && (
+                    <button
+                      className="text-btn danger planning-stop"
+                      onClick={() =>
+                        api(`/trips/${job.id}/cancel`, {
+                          method: "POST",
+                          body: "{}",
+                        }).catch((e) => notify(e.message))
+                      }
+                    >
+                      <CircleStop size={14} />
+                      停止规划
+                    </button>
+                  )}
                 </div>
               )}
+              <WorkProgress job={job} />
+              {job.status !== "running" &&
+                job.status !== "awaiting_confirmation" && (
+                  <div className="center-actions">
+                    <button
+                      className="button primary"
+                      disabled={creating}
+                      onClick={() => void retryTrip()}
+                    >
+                      <RotateCcw size={16} />
+                      重新规划
+                    </button>
+                    <button
+                      className="button secondary"
+                      onClick={() => setSettings(true)}
+                    >
+                      检查模型配置
+                    </button>
+                    <button
+                      className="button secondary"
+                      onClick={() => generate(true)}
+                    >
+                      体验示例
+                    </button>
+                  </div>
+                )}
             </>
           )}
           {page === "planner" && plan && (
@@ -922,7 +1000,9 @@ export default function App() {
                   </span>
                 </div>
               </div>
-              <section className="plan-cover">
+              <section
+                className={`plan-cover ${coverPhoto(plan) ? "with-photo" : ""}`}
+              >
                 <div className="plan-cover-copy">
                   <div className="eyebrow">
                     YOUR NEXT CHAPTER / {plan.destination}
@@ -944,11 +1024,30 @@ export default function App() {
                     </span>
                   </div>
                 </div>
-                <div className="plan-cover-art">
-                  <Mountain size={120} strokeWidth={0.45} />
-                  <span>慢一点，也很好。</span>
-                </div>
+                {coverPhoto(plan) ? (
+                  <PhotoFigure
+                    photo={coverPhoto(plan)!}
+                    name={plan.destination}
+                    cover
+                  />
+                ) : (
+                  <div className="plan-cover-art">
+                    <Mountain size={120} strokeWidth={0.45} />
+                    <span>慢一点，也很好。</span>
+                  </div>
+                )}
               </section>
+              {plan.confirmedSelection && (
+                <details className="card confirmed-direction">
+                  <summary>
+                    已按你确认的方案 {plan.confirmedSelection.option.id}「
+                    {plan.confirmedSelection.option.title}」规划
+                  </summary>
+                  {plan.confirmedSelection.notes.map((note, i) => (
+                    <p key={i}>{note}</p>
+                  ))}
+                </details>
+              )}
               <div className="plan-toolbar">
                 <div className="plan-tabs">
                   {(
@@ -993,9 +1092,9 @@ export default function App() {
               {tab === "itinerary" && (
                 <div className="photo-toolbar">
                   <span>
-                    {config?.hasUnsplashKey
-                      ? "逐站匹配 Unsplash 照片 · 取景以图片说明为准"
-                      : "已接入 Unsplash 精选配图 · 配置 Access Key 可按景点、菜品搜索"}
+                    {plan.assets
+                      ? `生成时已核验 ${plan.assets.locations.ready}/${plan.assets.locations.total} 个地点 · 已准备 ${plan.assets.maps.filter((m) => m.day && m.kind === "amap").length}/${plan.days.length} 张每日地图`
+                      : "高德地点照片优先 · Unsplash 补充配图 · 取景以来源说明为准"}
                   </span>
                   <button
                     className="text-btn"
@@ -1012,6 +1111,83 @@ export default function App() {
                 </div>
               )}
               {tab === "itinerary" && (
+                <div className="revision-toolbar">
+                  <div>
+                    <strong>行程 V{plan.revision || 1}</strong>
+                    <span>局部调整，保留其他日期</span>
+                  </div>
+                  <div>
+                    <button
+                      className="button secondary small"
+                      disabled={undoBusy || photosBusy}
+                      onClick={() =>
+                        setEditorTarget({ day: 1, mode: "journey" })
+                      }
+                    >
+                      班次与衔接
+                    </button>
+                    <button
+                      className="button secondary small"
+                      disabled={undoBusy || photosBusy}
+                      onClick={() =>
+                        setEditorTarget({ day: 1, mode: "budget" })
+                      }
+                    >
+                      费用与人数
+                    </button>
+                    <button
+                      className="button secondary small"
+                      disabled={!job?.canUndo || undoBusy || photosBusy}
+                      onClick={undoEdit}
+                    >
+                      <RotateCcw size={14} />
+                      {undoBusy ? "正在恢复" : "撤销上次修改"}
+                    </button>
+                    <button
+                      className="button primary small"
+                      disabled={undoBusy || photosBusy}
+                      onClick={() =>
+                        setEditorTarget({
+                          day: job?.editDraft?.request.day || day || 1,
+                          mode: ["journey", "budget", "repair"].includes(
+                            job?.editDraft?.request.action || "",
+                          )
+                            ? (job!.editDraft!.request.action as
+                                "journey" | "budget" | "repair")
+                            : undefined,
+                        })
+                      }
+                    >
+                      <Sparkles size={14} />
+                      {job?.editDraft &&
+                      ["running", "ready"].includes(job.editDraft.status)
+                        ? "继续查看修改"
+                        : `调整第 ${day || 1} 天`}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {plan.lastRevision && (
+                <details className="revision-note">
+                  <summary>最近修改 · {plan.lastRevision.instruction}</summary>
+                  <p>
+                    V{plan.lastRevision.revision} ·{" "}
+                    {plan.lastRevision.scope === "trip"
+                      ? "全程设置"
+                      : `第 ${plan.lastRevision.day} 天`}{" "}
+                    · 参考费用变化{" "}
+                    {plan.lastRevision.budgetDelta >= 0 ? "+" : ""}
+                    {money(plan.lastRevision.budgetDelta)}
+                    {plan.lastRevision.budgetIncomplete ? "（金额不完整）" : ""}
+                  </p>
+                  {plan.lastRevision.changes.map((c, i) => (
+                    <p key={i}>
+                      {c.name}：{c.details.join("；")}
+                    </p>
+                  ))}
+                </details>
+              )}
+              {tab === "itinerary" && (
                 <div className="itinerary-layout">
                   <section>
                     <div className="trip-intro">
@@ -1022,23 +1198,37 @@ export default function App() {
                       <p>{plan.summary}</p>
                     </div>
                     <DayTabs plan={plan} day={day} setDay={setDay} />
-                    <DayDetail plan={plan} day={day} />
+                    <DayDetail
+                      plan={plan}
+                      day={day}
+                      onEdit={(stopId) => setEditorTarget({ day, stopId })}
+                      busy={undoBusy || photosBusy}
+                    />
                   </section>
                   <aside className="itinerary-aside">
-                    <MapView plan={plan} day={day} compact />
+                    <MapView
+                      plan={plan}
+                      day={day}
+                      compact
+                      onUpdated={(next) =>
+                        setJob((current) =>
+                          current?.id === next.id ? next : current,
+                        )
+                      }
+                    />
                     <div className="card budget-preview">
                       <div className="section-heading">
                         <h3>让预算，心里有数</h3>
                         <Wallet size={18} />
                       </div>
                       <div className="big-money">
-                        {money(plan.totalEstimate)}
+                        {estimate(plan)}
                         <span>/ 全体 · 全程参考</span>
                       </div>
                       <div className="budget-track">
                         <div
                           style={{
-                            width: `${Math.min(100, (plan.totalEstimate / plan.request.budget) * 100)}%`,
+                            width: `${Math.min(100, ((plan.costs?.high ?? plan.totalEstimate) / plan.request.budget) * 100)}%`,
                           }}
                         />
                       </div>
@@ -1046,16 +1236,21 @@ export default function App() {
                         <span>总预算 {money(plan.request.budget)}</span>
                         <span
                           className={
-                            plan.totalEstimate > plan.request.budget
+                            (plan.costs?.high ?? plan.totalEstimate) >
+                            plan.request.budget
                               ? "over"
                               : ""
                           }
                         >
-                          {plan.totalEstimate > plan.request.budget
+                          {(plan.costs?.high ?? plan.totalEstimate) >
+                          plan.request.budget
                             ? "超出"
                             : "余量"}{" "}
                           {money(
-                            Math.abs(plan.request.budget - plan.totalEstimate),
+                            Math.abs(
+                              plan.request.budget -
+                                (plan.costs?.high ?? plan.totalEstimate),
+                            ),
                           )}
                         </span>
                       </div>
@@ -1092,46 +1287,43 @@ export default function App() {
                     </div>
                   </div>
                   <DayTabs plan={plan} day={day} setDay={setDay} overview />
-                  <MapView plan={plan} day={day} />
+                  <MapView
+                    plan={plan}
+                    day={day}
+                    onUpdated={(next) =>
+                      setJob((current) =>
+                        current?.id === next.id ? next : current,
+                      )
+                    }
+                  />
                 </section>
               )}
-              {tab === "budget" && <BudgetView plan={plan} />}
+              {tab === "budget" && (
+                <>
+                  <div className="revision-toolbar">
+                    <button
+                      className="button secondary small"
+                      onClick={() =>
+                        setEditorTarget({ day: 1, mode: "journey" })
+                      }
+                    >
+                      班次与衔接
+                    </button>
+                    <button
+                      className="button primary small"
+                      onClick={() =>
+                        setEditorTarget({ day: 1, mode: "budget" })
+                      }
+                    >
+                      管理费用与人数
+                    </button>
+                  </div>
+                  <BudgetView plan={plan} />
+                </>
+              )}
               {tab === "agents" && (
                 <>
-                  <AgentGrid events={job!.events} />
-                  <div className="progress-layout">
-                    <section className="card">
-                      <div className="section-heading">
-                        <h2>从讨论，到出发</h2>
-                        <span className="pill">
-                          {plan.mode === "demo" ? "演示记录" : "协作记录"}
-                        </span>
-                      </div>
-                      <EventFeed events={job!.events} />
-                    </section>
-                    <aside className="card reports">
-                      <h2>专家结论</h2>
-                      {plan.reports.map((r, i) => (
-                        <details key={`${r.agent}-${i}`}>
-                          <summary>
-                            {nameOf(r.agent)}
-                            <ChevronDown size={14} />
-                          </summary>
-                          <p>{r.summary}</p>
-                          {r.findings.map((f, n) => (
-                            <p key={n} className="muted">
-                              {f}
-                            </p>
-                          ))}
-                          {r.warnings.map((w, n) => (
-                            <p key={n} className="warning-text">
-                              {w}
-                            </p>
-                          ))}
-                        </details>
-                      ))}
-                    </aside>
-                  </div>
+                  <WorkProgress job={job!} />
                 </>
               )}
               {tab === "sources" && <Sources plan={plan} />}
@@ -1168,36 +1360,12 @@ export default function App() {
               {history.length ? (
                 <div className="history-grid">
                   {history.map((trip, i) => (
-                    <button
-                      className="history-card"
+                    <HistoryCard
                       key={trip.id}
-                      onClick={() => loadJob(trip.id)}
-                    >
-                      <div className={`history-art tone-${i % 3}`}>
-                        <span>{trip.destination.slice(0, 4)}</span>
-                        <Mountain size={100} strokeWidth={0.6} />
-                        <i>
-                          {trip.mode === "demo"
-                            ? "演示方案"
-                            : trip.status === "complete"
-                              ? "已完成"
-                              : trip.status === "running"
-                                ? "规划中"
-                                : "未完成"}
-                        </i>
-                      </div>
-                      <div className="history-body">
-                        <h3>{trip.title || `${trip.destination}旅行计划`}</h3>
-                        <p>
-                          {trip.startDate} · {trip.days} 天 · {trip.travelers}{" "}
-                          人
-                        </p>
-                        <span>
-                          打开旅程
-                          <ArrowUpRight size={17} />
-                        </span>
-                      </div>
-                    </button>
+                      trip={trip}
+                      index={i}
+                      onOpen={() => loadJob(trip.id)}
+                    />
                   ))}
                 </div>
               ) : (
@@ -1309,17 +1477,16 @@ export default function App() {
                   { name: "Unsplash 图片", ready: config?.hasUnsplashKey },
                   { name: "Tavily Web Search", ready: config?.hasSearchKey },
                   {
-                    name: "铁路 / 机票 MCP",
-                    ready: config?.mcpServers.some((s) =>
-                      s.roles.includes("transport"),
-                    ),
+                    name: "12306 高铁 / fast-flights 机票",
+                    ready: true,
+                    label: "内置 · 免 Key",
                   },
                 ].map((t) => (
                   <div key={t.name}>
                     <Globe2 size={16} />
                     <span>{t.name}</span>
                     <small className={t.ready ? "ready" : ""}>
-                      {t.ready ? "已配置" : "未配置"}
+                      {t.label || (t.ready ? "已配置" : "未配置")}
                     </small>
                   </div>
                 ))}
@@ -1340,6 +1507,16 @@ export default function App() {
             </div>
           )}
         </main>
+        {editorTarget && job?.plan && (
+          <ItineraryEditor
+            job={job}
+            day={editorTarget.day}
+            stopId={editorTarget.stopId}
+            mode={editorTarget.mode}
+            onUpdated={acceptEditedJob}
+            onClose={closeEditor}
+          />
+        )}
       </div>
       {settings &&
         (config ? (
@@ -1459,12 +1636,19 @@ function AgentGrid({ events }: { events: TripEvent[] }) {
     </div>
   );
 }
-function EventFeed({ events }: { events: TripEvent[] }) {
+function EventFeed({
+  events,
+  autoScroll = true,
+}: {
+  events: TripEvent[];
+  autoScroll?: boolean;
+}) {
   const messages = events.filter((e) => e.type !== "report");
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [events.length]);
+    if (autoScroll)
+      end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [events.length, autoScroll]);
   return (
     <div className="event-feed" aria-live="polite">
       {messages.length ? (
@@ -1546,7 +1730,17 @@ function DayTabs({
     </div>
   );
 }
-function DayDetail({ plan, day }: { plan: Plan; day: number }) {
+function DayDetail({
+  plan,
+  day,
+  onEdit,
+  busy,
+}: {
+  plan: Plan;
+  day: number;
+  onEdit: (stopId?: string) => void;
+  busy: boolean;
+}) {
   const d = plan.days.find((d) => d.day === day) || plan.days[0];
   const color = DAY_COLORS[(d.day - 1) % DAY_COLORS.length];
   return (
@@ -1562,6 +1756,7 @@ function DayDetail({ plan, day }: { plan: Plan; day: number }) {
         <CloudSun size={17} />
         {d.weather}
       </div>
+      <FactBadge label="天气依据" fact={d.weatherFact} />
       <div className="timeline">
         {d.stops.map((s, i) => {
           const Icon = {
@@ -1571,7 +1766,7 @@ function DayDetail({ plan, day }: { plan: Plan; day: number }) {
             transport: TrainFront,
           }[s.type];
           return (
-            <div className="timeline-item" key={`${s.name}-${i}`}>
+            <div className="timeline-item" key={s.id || `${s.name}-${i}`}>
               <div className="timeline-time">
                 <strong>{s.time}</strong>
                 <span>{s.duration}</span>
@@ -1603,6 +1798,7 @@ function DayDetail({ plan, day }: { plan: Plan; day: number }) {
                         : `${money(s.cost)} 参考`}
                   </span>
                 </div>
+                <StopTrust stop={s} />
                 {(s.type === "attraction" || s.type === "food") && (
                   <StopPhoto stop={s} />
                 )}
@@ -1613,6 +1809,13 @@ function DayDetail({ plan, day }: { plan: Plan; day: number }) {
                     <span>{s.tip}</span>
                   </div>
                 )}
+                <button
+                  className="text-btn stop-edit"
+                  disabled={busy}
+                  onClick={() => onEdit(s.id)}
+                >
+                  编辑这一站 <ArrowRight size={13} />
+                </button>
               </div>
             </div>
           );
@@ -1628,10 +1831,23 @@ function DayDetail({ plan, day }: { plan: Plan; day: number }) {
     </article>
   );
 }
+function estimate(plan: Plan) {
+  return plan.costs && plan.costs.high !== plan.costs.low
+    ? `${money(plan.costs.low)}–${money(plan.costs.high)}`
+    : money(plan.totalEstimate);
+}
 function BudgetView({ plan }: { plan: Plan }) {
   return (
     <div className="budget-layout">
       <section className="card budget-card">
+        <details className="expense-breakdown">
+          <summary>逐笔费用 · 单价、人数与房晚</summary>
+          <CostDetails
+            costs={plan.costs}
+            travelers={plan.request.travelers}
+            budget={plan.request.budget}
+          />
+        </details>
         <div className="section-heading">
           <div>
             <h2>把花费，安排得刚刚好。</h2>
@@ -1645,22 +1861,31 @@ function BudgetView({ plan }: { plan: Plan }) {
         <div className="budget-totals">
           <div>
             <span>全程参考费用</span>
-            <strong>{money(plan.totalEstimate)}</strong>
+            <strong>{estimate(plan)}</strong>
           </div>
           <div>
             <span>你的总预算</span>
             <strong>{money(plan.request.budget)}</strong>
           </div>
           <div
-            className={plan.totalEstimate > plan.request.budget ? "over" : ""}
+            className={
+              (plan.costs?.high ?? plan.totalEstimate) > plan.request.budget
+                ? "over"
+                : ""
+            }
           >
             <span>
-              {plan.totalEstimate > plan.request.budget
+              {(plan.costs?.high ?? plan.totalEstimate) > plan.request.budget
                 ? "超出预算"
                 : "参考余量"}
             </span>
             <strong>
-              {money(Math.abs(plan.request.budget - plan.totalEstimate))}
+              {money(
+                Math.abs(
+                  plan.request.budget -
+                    (plan.costs?.high ?? plan.totalEstimate),
+                ),
+              )}
             </strong>
           </div>
         </div>
@@ -1696,7 +1921,7 @@ function BudgetView({ plan }: { plan: Plan }) {
           ))}
         </div>
         <p className="fineprint">
-          所有金额按全体旅客整个行程计算，房价按每间每晚估算。未知金额没有按零元计入。
+          金额为已知费用区间，余量按区间上限计算；未知金额未计入。逐笔口径见费用明细。
         </p>
       </section>
       <div className="practical-grid">
@@ -1705,14 +1930,17 @@ function BudgetView({ plan }: { plan: Plan }) {
             <TrainFront size={24} />
           </div>
           <h2>出发，也安排好归途。</h2>
+          <JourneyDetails journey={plan.journey} />
           <span className="pill">{plan.transport.mode}</span>
           <div className="transport-detail">
             <span>去程</span>
             <p>{plan.transport.outbound}</p>
+            <FactBadge label="去程依据" fact={plan.quality?.outbound} />
           </div>
           <div className="transport-detail">
             <span>返程</span>
             <p>{plan.transport.inbound}</p>
+            <FactBadge label="返程依据" fact={plan.quality?.inbound} />
           </div>
           <p className="fineprint">{plan.transport.note}</p>
           <a
@@ -1745,6 +1973,7 @@ function BudgetView({ plan }: { plan: Plan }) {
             {plan.hotel.area}
           </p>
           <p>{plan.hotel.reason}</p>
+          <FactBadge label="住宿依据" fact={plan.quality?.hotel} />
           <div className="hotel-price">
             {money(plan.hotel.nightlyEstimate)}{" "}
             <span>/ 间夜参考 · 可订房型待核实</span>

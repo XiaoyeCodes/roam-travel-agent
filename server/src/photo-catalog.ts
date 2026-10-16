@@ -22,6 +22,20 @@ function photo(
   };
 }
 export const catalog = {
+  tokyo: photo(
+    "alY6_OpdwRQ",
+    "photo-1542051841857-5f90071e7989",
+    "Jezael Melgoza",
+    "jezar",
+    "东京涩谷夜景 · 目的地实景封面，来源页标注拍摄地",
+  ),
+  jiuzhaigou: photo(
+    "zjpXSPxLQf0",
+    "photo-1768276530399-778d3e7583ad",
+    "Russ Lee",
+    "gen0451021",
+    "九寨沟老虎海 · 目的地实景封面，来源页标注拍摄地",
+  ),
   street: photo(
     "olF6l74uGbQ",
     "photo-1776305251362-1b8235a364ba",
@@ -93,6 +107,17 @@ export const catalog = {
     "南京城墙眺望 · 相关取景，未标注具体城墙段",
   ),
 };
+// Destination covers are separate from stop photos; a city view must not be
+// presented as a particular attraction. Source pages checked 2026-10-16.
+export function destinationPhotos(destination: string): Photo[] {
+  const city = destination.trim().replace(/市$/, "").toLowerCase();
+  if (["南京", "nanjing"].includes(city))
+    return [catalog.lake, catalog.mausoleum, catalog.temple];
+  if (["东京", "tokyo", "東京都"].includes(city)) return [catalog.tokyo];
+  if (["九寨沟", "九寨沟县", "jiuzhaigou"].includes(city))
+    return [catalog.jiuzhaigou];
+  return [];
+}
 export function curatedPhoto(
   destination: string,
   stop: Stop,

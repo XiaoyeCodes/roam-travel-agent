@@ -26,6 +26,54 @@ export const tripRequestSchema = z.object({
   mode: z.enum(["demo", "live"]),
 });
 const text = z.string().max(4000);
+export const proposalDecisionSchema = z
+  .object({
+    proposalId: z.string().uuid(),
+    action: z.enum(["confirm", "revise"]),
+    optionId: z.enum(["A", "B", "C"]).optional(),
+    notes: z.string().trim().max(2000).default(""),
+  })
+  .superRefine((value, ctx) => {
+    if (value.action === "confirm" && !value.optionId)
+      ctx.addIssue({
+        code: "custom",
+        path: ["optionId"],
+        message: "请先选择一个方案",
+      });
+    if (value.action === "revise" && !value.notes)
+      ctx.addIssue({
+        code: "custom",
+        path: ["notes"],
+        message: "请填写希望如何调整",
+      });
+  });
+export const proposalSchema = z.object({
+  message: z.string().trim().min(1).max(1000),
+  options: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(100),
+        summary: z.string().trim().min(1).max(800),
+        highlights: z.array(z.string().min(1).max(150)).min(1).max(6),
+        outline: z
+          .array(
+            z.object({
+              day: z.number().int().min(1).max(14),
+              title: z.string().min(1).max(100),
+              places: z.array(z.string().min(1).max(100)).min(1).max(5),
+            }),
+          )
+          .min(1)
+          .max(14),
+        pace: z.enum(["relaxed", "balanced", "packed"]),
+        costNote: z.string().min(1).max(500),
+        cautions: z.array(z.string().max(300)).max(5),
+        sourceUrls: z.array(z.string().max(2000)).max(8).default([]),
+      }),
+    )
+    .min(2)
+    .max(3),
+});
 export const reportSchema = z.object({
   summary: text,
   findings: z.array(text).max(12).default([]),
@@ -72,6 +120,11 @@ export const planSchema = z.object({
               tip: text,
               sourceIds: z.array(z.string()).default([]),
               photoQuery: z.string().max(160).optional(),
+              poiId: z
+                .string()
+                .regex(/^[a-zA-Z0-9_-]{1,80}$/)
+                .nullable()
+                .optional(),
             }),
           )
           .min(1)

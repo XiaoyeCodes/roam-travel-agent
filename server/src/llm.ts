@@ -11,6 +11,15 @@ type ToolCall = {
   type: "function";
   function: { name: string; arguments: string };
 };
+// Callers that produce structured results can repair these without treating
+// an incomplete model answer as a connection or credentials failure.
+export class ModelOutputError extends Error {
+  constructor(public reason: "length" | "empty") {
+    super(
+      reason === "length" ? "模型回答尚未完整生成。" : "模型没有返回有效内容。",
+    );
+  }
+}
 export type ToolDef = {
   type: "function";
   function: {
@@ -84,10 +93,15 @@ export async function completion(
         choices?: { message: Message; finish_reason?: string }[];
         usage?: unknown;
       };
-      if (!data.choices?.[0]?.message)
-        throw new Error("模型没有返回有效内容。");
+      if (!data.choices?.[0]?.message) throw new ModelOutputError("empty");
       if (data.choices[0].finish_reason === "length")
-        throw new Error("模型输出超出长度限制，请缩短行程后重试。");
+        throw new ModelOutputError("length");
+      if (
+        opts.json &&
+        (typeof data.choices[0].message.content !== "string" ||
+          !data.choices[0].message.content?.trim())
+      )
+        throw new ModelOutputError("empty");
       return data.choices[0].message;
     } catch (e) {
       if (opts.signal?.aborted) throw e;

@@ -3,6 +3,8 @@ import type { Config } from "./config.js";
 import type { Photo, Plan, Stop } from "../../shared/types.js";
 import { PHOTO_VERSION } from "../../shared/types.js";
 import { curatedPhoto, photoQuery } from "./photo-catalog.js";
+import { photoMode, photoImageUrl } from "../../shared/photos.js";
+import { enrichLocations } from "./places.js";
 
 const referral = { utm_source: "roam_travel", utm_medium: "referral" };
 export function unsplashUrl(value: string, image = false): string {
@@ -94,11 +96,12 @@ const pending = new WeakMap<Plan, Promise<void>>();
 export async function enrichPhotos(
   plan: Plan,
   config: Config,
-  options: { force?: boolean; signal?: AbortSignal } = {},
+  options: { force?: boolean; signal?: AbortSignal; day?: number } = {},
 ) {
-  const mode = config.unsplashKey ? "search" : "curated";
+  const mode = photoMode(!!config.amapKey, !!config.unsplashKey);
   if (
     !options.force &&
+    !options.day &&
     plan.photoVersion === PHOTO_VERSION &&
     plan.photoMode === mode
   )
@@ -109,8 +112,13 @@ export async function enrichPhotos(
     return;
   }
   const task = (async () => {
+    await enrichLocations(plan, config, {
+      signal: options.signal,
+      day: options.day,
+    });
     // Work on copies so cancellation cannot persist a half-populated plan.
     const stops = plan.days
+      .filter((d) => !options.day || d.day === options.day)
       .flatMap((d) => d.stops)
       .filter((s) => s.type === "attraction" || s.type === "food");
     const results = new Map<
@@ -131,37 +139,82 @@ export async function enrichPhotos(
           const fallback = curatedPhoto(plan.destination, stop);
           let selected: Photo | undefined;
           let status: Stop["photoStatus"] = "unconfigured";
-          if (config.unsplashKey) {
-            const query = photoQuery(plan.destination, stop);
-            let lookup = queries.get(query);
-            if (!lookup) {
-              // A long trip must not exhaust a development application's hourly quota.
-              lookup =
-                queries.size < 24 && !deadline.aborted
-                  ? searchPhotos(config, query, lookupSignal).catch(() => ({
-                      photos: [],
-                      status: "error" as const,
-                    }))
-                  : Promise.resolve({ photos: [], status: "error" as const });
-              queries.set(query, lookup);
-            }
-            const result = await lookup;
-            selected = result.photos[0];
-            status = result.status;
+          const placePhotos =
+            stop.place?.photos.map(photoImageUrl).filter(Boolean) || [];
+          if (placePhotos.length && stop.location && stop.verified) {
+            const link = `https://uri.amap.com/marker?position=${stop.location.join(",")}&name=${encodeURIComponent(stop.place!.name)}&coordinate=gaode&callnative=0`;
+            selected = {
+              id: stop.place!.id,
+              url: placePhotos[0],
+              fallbackUrls: placePhotos.slice(1),
+              alt: `${stop.place!.name} · 高德地点照片`,
+              photographer: "高德地点图库",
+              profileUrl: link,
+              photoUrl: link,
+              source: "amap-poi",
+              caption: `高德 POI 配图 · ${stop.place!.name}，具体取景以来源页为准`,
+            };
           }
-          const photo = selected || fallback;
+          if (config.unsplashKey && !selected) {
+            const primary = photoQuery(plan.destination, stop);
+            // Shorter queries recover sparse landmark results, while captions retain the scope.
+            const candidates = [
+              ...new Set([
+                primary,
+                ...(primary.split(/\s+/).length > 3
+                  ? [primary.split(/\s+/).slice(0, 3).join(" ")]
+                  : []),
+                ...(stop.type === "food" ? ["Chinese food"] : []),
+              ]),
+            ];
+            for (const query of candidates) {
+              let lookup = queries.get(query);
+              if (!lookup) {
+                // A long trip must not exhaust a development application's hourly quota.
+                lookup =
+                  queries.size < 24 && !deadline.aborted
+                    ? searchPhotos(config, query, lookupSignal).catch(() => ({
+                        photos: [],
+                        status: "error" as const,
+                      }))
+                    : Promise.resolve({ photos: [], status: "error" as const });
+                queries.set(query, lookup);
+              }
+              const result = await lookup;
+              selected = result.photos[0];
+              status = result.status;
+              if (selected && query !== primary)
+                selected = {
+                  ...selected,
+                  caption:
+                    stop.type === "food"
+                      ? "Unsplash 菜品意象 · 非推荐餐馆或当地菜品实拍"
+                      : "Unsplash 相关风景 · 未核实为该景点实拍",
+                };
+              if (selected || status === "error") break;
+            }
+          }
+          const photo =
+            selected ||
+            fallback ||
+            (status === "error" ? stop.photo : undefined);
           results.set(stop, { photo, status: photo ? "ready" : status });
         }
       }),
     );
     options.signal?.throwIfAborted();
     results.forEach((value, stop) => {
+      if (value.photo && value.photo.url !== stop.photo?.url)
+        stop.photoCheckedAt = new Date().toISOString();
       stop.photo = value.photo;
       stop.photoStatus = value.status;
     });
     plan.images = [
       ...new Map(
-        stops.filter((s) => s.photo).map((s) => [s.photo!.url, s.photo!]),
+        plan.days
+          .flatMap((d) => d.stops)
+          .filter((s) => s.photo)
+          .map((s) => [s.photo!.url, s.photo!]),
       ).values(),
     ];
     plan.photoVersion = PHOTO_VERSION;

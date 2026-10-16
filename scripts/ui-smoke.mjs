@@ -16,7 +16,9 @@ try {
     deviceScaleFactor: 1,
   });
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
+  await page.goto(process.env.UI_BASE_URL || "http://127.0.0.1:5173/", {
+    waitUntil: "networkidle",
+  });
   await page.screenshot({ path: "output/qa/home-desktop.png", fullPage: true });
   await page.getByRole("button", { name: "体验南京示例", exact: true }).click();
   await page
@@ -29,7 +31,7 @@ try {
     () => document.querySelector(".stop-photo img")?.naturalWidth > 0,
     { timeout: 30000 },
   );
-  if ((await page.locator(".stop-photo").count()) !== 4)
+  if ((await page.locator(".day-detail .stop-photo").count()) !== 4)
     throw new Error("Expected a photo on every day-one stop");
   for (const img of await page.locator(".stop-photo img").all()) {
     await img.scrollIntoViewIfNeeded();

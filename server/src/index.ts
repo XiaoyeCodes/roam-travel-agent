@@ -11,7 +11,7 @@ import {
   updateConfig,
   safeError,
 } from "./config.js";
-import { tripRequestSchema } from "./schema.js";
+import { tripRequestSchema, proposalDecisionSchema } from "./schema.js";
 import {
   allJobs,
   createJob,
@@ -19,16 +19,47 @@ import {
   bus,
   controllers,
   saveJob,
+  emit,
+  publicJob,
 } from "./store.js";
-import { runWorkflow } from "./workflow.js";
+import {
+  queueWorkflow,
+  resumeWorkflows,
+  pauseWorkflowsForRestart,
+  cancelWorkflow,
+} from "./workflow-queue.js";
+import { acceptProposalDecision, ProposalConflict } from "./proposals.js";
 import { completion } from "./llm.js";
 import { connectMcp } from "./mcp.js";
+import {
+  startTicketServices,
+  stopTicketServices,
+  ticketServiceStatus,
+} from "./ticket-runtime.js";
+import { ticketQuerySchema } from "./tickets.js";
+import { executeTool, makeTools } from "./tools.js";
 import { getMap } from "./maps.js";
+import { browserMapData } from "./browser-map.js";
+import { enrichLocations } from "./places.js";
 import { renderPdf } from "./pdf.js";
 import { renderHtml } from "./html.js";
 import { enrichPhotos, trackPhotoExport } from "./photos.js";
 import { demoPlan, exampleRequest } from "./demo.js";
 import type { TripEvent } from "../../shared/types.js";
+import { refreshFacts, verifyPlan } from "./quality.js";
+import { journeyOptions } from "./journey.js";
+import { tripSummaries } from "./history.js";
+import {
+  applyRevision,
+  cancelRevision,
+  editablePlan,
+  editControllers,
+  RevisionError,
+  revisionPreview,
+  startRevision,
+  undoRevision,
+  verificationLocks,
+} from "./revisions.js";
 const app = express();
 app.disable("x-powered-by");
 const port = Number(process.env.PORT || 8787),
@@ -85,6 +116,29 @@ app.get("/api/health", (_req, res) =>
   res.json({ ok: true, service: "roam-travel", version: "1.0.0" }),
 );
 app.get("/api/config", (_req, res) => res.json(publicConfig()));
+app.get("/api/tickets/status", (_req, res) => res.json(ticketServiceStatus()));
+app.post(
+  "/api/tickets/:kind/query",
+  asyncRoute(async (req, res) => {
+    const kind = z.enum(["rail", "flight"]).parse(req.params.kind);
+    const query = ticketQuerySchema.parse(req.body);
+    const controller = new AbortController();
+    const close = () => {
+      if (!res.writableEnded) controller.abort();
+    };
+    res.on("close", close);
+    try {
+      const name = kind === "rail" ? "search_train_tickets" : "search_flights";
+      const tool = makeTools(getConfig()).find(
+        (t) => t.definition.function.name === name,
+      )!;
+      const result = await executeTool(tool, query, controller.signal);
+      if (!res.destroyed) res.json(result);
+    } finally {
+      res.off("close", close);
+    }
+  }),
+);
 app.patch("/api/config", (req, res) => res.json(updateConfig(req.body)));
 app.post(
   "/api/config/test",
@@ -118,31 +172,11 @@ app.post(
     }
   }),
 );
-app.get("/api/trips", (_req, res) =>
-  res.json(
-    allJobs().map((j) => ({
-      id: j.id,
-      destination: j.request.destination,
-      days: j.request.days,
-      travelers: j.request.travelers,
-      startDate: j.request.startDate,
-      title: j.plan?.title,
-      status: j.status,
-      mode: j.request.mode,
-      createdAt: j.createdAt,
-    })),
-  ),
-);
+app.get("/api/trips", (_req, res) => res.json(tripSummaries(allJobs())));
 app.post(
   "/api/trips",
   asyncRoute(async (req, res) => {
     const request = tripRequestSchema.parse(req.body);
-    if (controllers.size >= 3) {
-      res
-        .status(429)
-        .json({ error: "已有 3 个规划进行中，请等待或取消一个任务。" });
-      return;
-    }
     if (
       request.mode === "demo" &&
       (request.destination !== "南京" ||
@@ -156,12 +190,8 @@ app.post(
       });
       return;
     }
-    if (request.mode === "live" && !getConfig().apiKey) {
-      res.status(400).json({ error: "请先配置模型 API Key，或选择体验示例。" });
-      return;
-    }
     const job = createJob(request);
-    void runWorkflow(job, getConfig());
+    queueWorkflow(job, getConfig());
     res.status(202).json({ id: job.id });
   }),
 );
@@ -170,7 +200,7 @@ app.post("/api/demo", (_req, res) => {
   job.plan = demoPlan(job.id, job.request);
   job.status = "complete";
   saveJob(job);
-  res.json(job);
+  res.json(publicJob(job));
 });
 app.get("/api/trips/:id", (req, res) => {
   const job = getJob(String(req.params.id));
@@ -178,7 +208,157 @@ app.get("/api/trips/:id", (req, res) => {
     res.status(404).json({ error: "行程不存在" });
     return;
   }
-  res.json(job);
+  if (job.plan) refreshFacts(job.plan);
+  res.json(publicJob(job));
+});
+app.post("/api/trips/:id/revisions", (req, res) => {
+  const job = getJob(String(req.params.id));
+  if (!job) {
+    res.status(404).json({ error: "行程不存在" });
+    return;
+  }
+  startRevision(job, req.body, getConfig());
+  res.status(202).json(revisionPreview(job));
+});
+app.get("/api/trips/:id/revisions/current", (req, res) => {
+  const job = getJob(String(req.params.id));
+  if (!job) {
+    res.status(404).json({ error: "行程不存在" });
+    return;
+  }
+  res.json(revisionPreview(job));
+});
+app.get("/api/trips/:id/journey-options", (req, res) => {
+  const job = getJob(String(req.params.id));
+  if (!job?.plan) {
+    res.status(404).json({ error: "行程不存在" });
+    return;
+  }
+  res.json(journeyOptions(job.plan));
+});
+app.post("/api/trips/:id/revisions/:draftId/apply", (req, res) => {
+  const job = getJob(String(req.params.id));
+  if (!job) {
+    res.status(404).json({ error: "行程不存在" });
+    return;
+  }
+  const { baseRevision } = z
+    .object({ baseRevision: z.number().int().min(1) })
+    .parse(req.body);
+  applyRevision(job, String(req.params.draftId), baseRevision);
+  res.json(publicJob(job));
+});
+app.post("/api/trips/:id/revisions/:draftId/cancel", (req, res) => {
+  const job = getJob(String(req.params.id));
+  if (!job) {
+    res.status(404).json({ error: "行程不存在" });
+    return;
+  }
+  cancelRevision(job, String(req.params.draftId));
+  res.json({ ok: true });
+});
+app.post("/api/trips/:id/undo", (req, res) => {
+  const job = getJob(String(req.params.id));
+  if (!job) {
+    res.status(404).json({ error: "行程不存在" });
+    return;
+  }
+  const { baseRevision } = z
+    .object({ baseRevision: z.number().int().min(1) })
+    .parse(req.body);
+  undoRevision(job, baseRevision);
+  res.json(publicJob(job));
+});
+app.post(
+  "/api/trips/:id/verify",
+  asyncRoute(async (req, res) => {
+    const job = getJob(String(req.params.id));
+    if (!job) {
+      res.status(404).json({ error: "行程不存在" });
+      return;
+    }
+    const input = z
+      .object({
+        baseRevision: z.number().int().min(1),
+        day: z.number().int().min(1).max(14).optional(),
+        mode: z.enum(["auto", "walking", "driving", "transit"]).optional(),
+        force: z.boolean().optional(),
+      })
+      .strict()
+      .parse(req.body);
+    const plan = structuredClone(editablePlan(job, input.baseRevision));
+    if (input.day && !plan.days.some((d) => d.day === input.day))
+      throw new RevisionError("日期不存在", 400);
+    if (job.editDraft?.status === "ready")
+      throw new RevisionError("请先应用或放弃修改预览，再重新核验");
+    verificationLocks.add(job.id);
+    try {
+      await verifyPlan(plan, getConfig(), {
+        ...input,
+        signal: AbortSignal.timeout(180000),
+      });
+      plan.revision = input.baseRevision + 1;
+      plan.updatedAt = new Date().toISOString();
+      job.plan = plan;
+      saveJob(job);
+      res.json(publicJob(job));
+    } finally {
+      verificationLocks.delete(job.id);
+    }
+  }),
+);
+app.post("/api/trips/:id/decision", (req, res) => {
+  const job = getJob(String(req.params.id));
+  if (!job) {
+    res.status(404).json({ error: "行程不存在" });
+    return;
+  }
+  const decision = proposalDecisionSchema.parse(req.body);
+  if (controllers.has(job.id)) {
+    res.status(409).json({ error: "任务仍在处理，请稍后重试。" });
+    return;
+  }
+  const config = getConfig();
+  try {
+    acceptProposalDecision(job, decision);
+  } catch (error) {
+    if (error instanceof ProposalConflict) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+  queueWorkflow(job, config);
+  res.status(202).json(publicJob(job));
+});
+app.post("/api/trips/:id/retry", (req, res) => {
+  const job = getJob(String(req.params.id));
+  if (!job) {
+    res.status(404).json({ error: "行程不存在" });
+    return;
+  }
+  if (
+    !["error", "cancelled"].includes(job.status) ||
+    controllers.has(job.id) ||
+    editControllers.has(job.id) ||
+    verificationLocks.has(job.id)
+  ) {
+    res
+      .status(409)
+      .json({ error: "当前行程不能重新开始，请刷新查看最新进度。" });
+    return;
+  }
+  const config = getConfig();
+  job.status = "running";
+  job.error = undefined;
+  emit(job, {
+    type: "status",
+    agent: "planner",
+    state: "running",
+    message: "已恢复原旅行需求与补充意见，继续规划",
+  });
+  queueWorkflow(job, config);
+  res.status(202).json(publicJob(job));
 });
 app.post("/api/trips/:id/cancel", (req, res) => {
   const job = getJob(String(req.params.id));
@@ -186,7 +366,8 @@ app.post("/api/trips/:id/cancel", (req, res) => {
     res.status(404).json({ error: "行程不存在" });
     return;
   }
-  controllers.get(job.id)?.abort();
+  if (["running", "awaiting_confirmation"].includes(job.status))
+    cancelWorkflow(job);
   res.json({ ok: true });
 });
 app.get("/api/trips/:id/events", (req, res) => {
@@ -210,7 +391,11 @@ app.get("/api/trips/:id/events", (req, res) => {
   }
   const listener = (event: TripEvent) => {
     send(event);
-    if (event.type === "complete" || event.type === "error") {
+    if (
+      event.type === "complete" ||
+      event.type === "error" ||
+      event.type === "proposal"
+    ) {
       cleanup();
       res.end();
     }
@@ -226,7 +411,8 @@ app.get("/api/trips/:id/events", (req, res) => {
 app.get(
   "/api/trips/:id/map",
   asyncRoute(async (req, res) => {
-    const plan = getJob(String(req.params.id))?.plan;
+    const job = getJob(String(req.params.id));
+    const plan = job?.plan && structuredClone(job.plan);
     if (!plan) {
       res.status(404).json({ error: "行程尚未生成" });
       return;
@@ -239,7 +425,41 @@ app.get(
           .max(plan.days.length)
           .parse(req.query.day)
       : undefined;
-    res.json(await getMap(plan, getConfig(), day));
+    const map = await getMap(plan, getConfig(), day);
+    res.json({ ...map, interactive: browserMapData(plan, getConfig(), day) });
+  }),
+);
+app.post(
+  "/api/trips/:id/locations",
+  asyncRoute(async (req, res) => {
+    const job = getJob(String(req.params.id));
+    if (!job?.plan || job.status !== "complete") {
+      res.status(404).json({ error: "行程尚未生成" });
+      return;
+    }
+    const { day } = z
+      .object({
+        day: z.number().int().min(1).max(job.plan.days.length).optional(),
+      })
+      .parse(req.body);
+    const plan = structuredClone(editablePlan(job, job.plan.revision || 1));
+    if (job.editDraft?.status === "ready")
+      throw new RevisionError("请先应用或放弃修改预览");
+    verificationLocks.add(job.id);
+    try {
+      await verifyPlan(plan, getConfig(), {
+        day,
+        force: true,
+        signal: AbortSignal.timeout(180000),
+      });
+      plan.revision = (plan.revision || 1) + 1;
+      plan.updatedAt = new Date().toISOString();
+      job.plan = plan;
+      saveJob(job);
+    } finally {
+      verificationLocks.delete(job.id);
+    }
+    res.json({ ok: true });
   }),
 );
 app.post(
@@ -253,9 +473,24 @@ app.post(
     const { force } = z
       .object({ force: z.boolean().optional() })
       .parse(req.body);
-    await enrichPhotos(job.plan, getConfig(), { force });
-    saveJob(job);
-    res.json(job);
+    const plan = structuredClone(editablePlan(job, job.plan.revision || 1));
+    if (job.editDraft?.status === "ready")
+      throw new RevisionError("请先应用或放弃修改预览");
+    verificationLocks.add(job.id);
+    try {
+      await enrichPhotos(plan, getConfig(), {
+        force,
+        signal: AbortSignal.timeout(180000),
+      });
+      refreshFacts(plan);
+      plan.revision = (plan.revision || 1) + 1;
+      plan.updatedAt = new Date().toISOString();
+      job.plan = plan;
+      saveJob(job);
+    } finally {
+      verificationLocks.delete(job.id);
+    }
+    res.json(publicJob(job));
   }),
 );
 app.get(
@@ -267,14 +502,15 @@ app.get(
       return;
     }
     const config = getConfig();
-    await enrichPhotos(job.plan, config);
-    saveJob(job);
-    const trackingFailures = await trackPhotoExport(job.plan, config);
-    const html = await renderHtml(job.plan, config, trackingFailures);
+    // Export one immutable applied revision, even if another tab edits the trip.
+    const snapshot = structuredClone(job.plan);
+    await enrichPhotos(snapshot, config);
+    const trackingFailures = await trackPhotoExport(snapshot, config);
+    const html = await renderHtml(snapshot, config, trackingFailures);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="roam-${job.plan.request.startDate}.html"; filename*=UTF-8''${encodeURIComponent(`${job.plan.destination}-${job.plan.days.length}日旅行手册.html`)}`,
+      `attachment; filename="roam-${snapshot.request.startDate}.html"; filename*=UTF-8''${encodeURIComponent(`${snapshot.destination}-${snapshot.days.length}日旅行手册.html`)}`,
     );
     res.send(html);
   }),
@@ -325,16 +561,38 @@ app.use(
     _next: express.NextFunction,
   ) => {
     if (res.headersSent) return;
-    res.status(error instanceof z.ZodError ? 400 : 500).json({
-      error:
-        error instanceof z.ZodError
-          ? error.issues
-              .map((i) => `${i.path.join(".")}：${i.message}`)
-              .join("；")
-          : safeError(error),
-    });
+    res
+      .status(
+        error instanceof RevisionError
+          ? error.status
+          : error instanceof z.ZodError
+            ? 400
+            : 500,
+      )
+      .json({
+        error:
+          error instanceof z.ZodError
+            ? error.issues
+                .map((i) => `${i.path.join(".")}：${i.message}`)
+                .join("；")
+            : safeError(error),
+      });
   },
 );
-app.listen(port, host, () =>
-  console.log(`Roam API ready at http://${host}:${port}`),
-);
+const server = app.listen(port, host, () => {
+  console.log(`Roam API ready at http://${host}:${port}`);
+  startTicketServices();
+  resumeWorkflows(getConfig());
+});
+let shuttingDown = false;
+for (const event of ["SIGINT", "SIGTERM"] as const)
+  process.on(event, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    pauseWorkflowsForRestart();
+    for (const controller of editControllers.values()) controller.abort();
+    const timer = setTimeout(() => process.exit(0), 5000);
+    timer.unref();
+    server.close();
+    void stopTicketServices().finally(() => process.exit(0));
+  });

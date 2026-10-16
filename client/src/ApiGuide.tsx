@@ -24,6 +24,17 @@ export const KEY_GUIDES = {
     tab: "tools",
     configured: "hasAmapKey",
   },
+  amapJsKey: {
+    name: "高德交互地图 · 网页端",
+    apply: "https://console.amap.com/dev/key/app",
+    docs: "https://lbs.amap.com/api/javascript-api-v2/guide/abc/jscode",
+    action: "申请高德 JS API Key",
+    field: "外部工具 → 网页端 JS API Key / JS API 安全密钥",
+    instructions:
+      "添加 Key 时选择「Web 端（JS API）」，填入 Key 及配套安全密钥。用于网页与导出 HTML 的交互地图，这组配置会提供给浏览器；Web 服务 Key 仍只保存在后端。",
+    tab: "tools",
+    configured: "hasAmapJsKey",
+  },
   unsplashKey: {
     name: "Unsplash 图片",
     apply: "https://unsplash.com/oauth/applications",
@@ -128,13 +139,13 @@ export default function ApiGuide({
       </article>
       <article className="api-guide-card">
         <div className="api-guide-heading">
-          <h3>铁路与机票 MCP</h3>
-          <span className="pill">服务接入</span>
+          <h3>免费铁路与机票</h3>
+          <span className="pill">内置 · 免 Key</span>
         </div>
         <p>
-          铁路可参考下方社区项目部署，再填入服务启动后提供的 HTTP / SSE
-          地址。机票需要单独接入服务商提供的 MCP 地址；Bearer Token
-          按该服务的要求填写。
+          12306 随应用自动启动，fast-flights 自动准备免费机票查询环境。
+          无需填写服务地址或 Key，可在「MCP 服务」实查。机票来自 Google
+          Flights，受网络和页面变化影响。
         </p>
         <a
           className="api-guide-link"
@@ -149,7 +160,7 @@ export default function ApiGuide({
           className="api-guide-configure"
           onClick={() => onConfigure("mcp")}
         >
-          MCP 服务 → 添加服务
+          MCP 服务 → 免费票务实查
           <ArrowRight size={13} />
         </button>
       </article>

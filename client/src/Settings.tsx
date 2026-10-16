@@ -16,6 +16,7 @@ import {
 import { AGENTS, type PublicConfig, type AgentId } from "../../shared/types";
 import { api } from "./api";
 import ApiGuide, { KeyApplicationLinks } from "./ApiGuide";
+import TicketServices from "./TicketServices";
 type Props = {
   config: PublicConfig;
   onClose: () => void;
@@ -31,6 +32,8 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
     model: config.model,
     apiKey: "",
     amapKey: "",
+    amapJsKey: "",
+    amapJsSecurityCode: "",
     unsplashKey: "",
     searchKey: "",
   });
@@ -93,6 +96,8 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
         ...v,
         apiKey: "",
         amapKey: "",
+        amapJsKey: "",
+        amapJsSecurityCode: "",
         unsplashKey: "",
         searchKey: "",
       }));
@@ -169,7 +174,13 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
     }
   }
   const secretField = (
-    key: "apiKey" | "amapKey" | "unsplashKey" | "searchKey",
+    key:
+      | "apiKey"
+      | "amapKey"
+      | "amapJsKey"
+      | "amapJsSecurityCode"
+      | "unsplashKey"
+      | "searchKey",
     label: string,
     exists: boolean,
   ) => (
@@ -297,16 +308,52 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
               <div>
                 <h3>高德地图</h3>
                 <p>
-                  POI、酒店、餐馆、自驾路线和 HTML 手册地图。填入 Web 服务 Key
-                  后自动启用高德 MCP。
+                  POI、地点实景照片、酒店、餐馆、自驾路线和 HTML 每日地图。填入
+                  Web 服务 Key 后自动启用高德 MCP。
                 </p>
                 {secretField("amapKey", "高德 Web 服务 Key", config.hasAmapKey)}
                 <KeyApplicationLinks service="amapKey" />
+                {secretField(
+                  "amapJsKey",
+                  "网页端 JS API Key · 交互地图",
+                  !!config.hasAmapJsKey,
+                )}
+                {secretField(
+                  "amapJsSecurityCode",
+                  "JS API 安全密钥 · 新申请的 Key 需填写",
+                  !!config.hasAmapJsSecurityCode,
+                )}
+                <div className="key-application-help">
+                  <div className="key-application-links">
+                    <a
+                      href="https://console.amap.com/dev/key/app"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      申请 Web 端（JS API）Key ↗
+                    </a>
+                    <a
+                      href="https://lbs.amap.com/api/javascript-api-v2/guide/abc/jscode"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      安全密钥与域名配置说明 ↗
+                    </a>
+                  </div>
+                  <p>
+                    网页端 Key 用于拖动、缩放和点击地图；上方 Web 服务 Key
+                    用于智能体检索地点。JS
+                    配置会随交互地图提供给浏览器，并写入导出的
+                    HTML；请使用专用网页端
+                    Key，按需设置域名白名单。修改后刷新页面生效。
+                  </p>
+                </div>
               </div>
               <div>
                 <h3>Unsplash 图片</h3>
                 <p>
-                  按每个景点或菜品搜索照片，并保留摄影师署名。已有行程可点击「补全图片」更新；未配置时，南京示例使用有来源的精选照片。
+                  优先使用高德匹配地点的照片，Unsplash
+                  补充风景与菜品配图并保留署名。已有行程可点击「补全图片」更新；南京示例另有精选照片。
                 </p>
                 {secretField(
                   "unsplashKey",
@@ -314,6 +361,29 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
                   config.hasUnsplashKey,
                 )}
                 <KeyApplicationLinks service="unsplashKey" />
+                <div className="key-application-help">
+                  <div className="key-application-links">
+                    <a
+                      href="https://ssyer.com/home"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      沙沙野 · 国内免费素材 ↗
+                    </a>
+                    <a
+                      href="https://pixabay.com/zh/service/about/api/"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Pixabay · 免费 API 备选 ↗
+                    </a>
+                  </div>
+                  <p>
+                    沙沙野适合手动挑选并核对单张授权，未接入自动搜索；Pixabay
+                    为海外图库。高德地点照片已自动接入，接口额度以控制台为准，图片本身不代表
+                    CC0 授权。
+                  </p>
+                </div>
               </div>
               <div>
                 <h3>Web Search</h3>
@@ -336,8 +406,9 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
           )}
           {tab === "mcp" && (
             <>
+              <TicketServices />
               <p className="muted">
-                接入铁路、机票或其他查询服务。支持 Streamable HTTP 与
+                可选：添加其他查询服务。支持 Streamable HTTP 与
                 SSE；每个服务只分配给指定专家。
               </p>
               <a
@@ -466,8 +537,8 @@ export default function Settings({ config, onClose, onSaved, notify }: Props) {
                 </button>
               </div>
               <p className="fineprint">
-                12306
-                只负责火车票，机票需单独的服务。仅开放查询工具，不自动下单。
+                内置 12306 与 fast-flights
+                分别查询高铁和机票；上方外部服务为可选扩展。仅开放查询，不自动下单。
               </p>
             </>
           )}

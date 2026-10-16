@@ -1,8 +1,12 @@
 import type { Plan } from "../../shared/types.js";
 import { DAY_COLORS } from "../../shared/types.js";
 import type { Config } from "./config.js";
-import { safeError } from "./config.js";
+import { safeError, DATA_DIR } from "./config.js";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { createHash } from "node:crypto";
+import { amapFetch } from "./amap.js";
+import { enrichLocations } from "./places.js";
 export function escapeHtml(value: unknown): string {
   return String(value ?? "").replace(
     /[&<>"']/g,
@@ -17,18 +21,25 @@ export type MapResult = {
   image: string;
   caption: string;
   missing: string[];
+  stops?: {
+    day: number;
+    index: number;
+    name: string;
+    location: [number, number] | null;
+    note?: string;
+  }[];
 };
 export function schematic(plan: Plan, day?: number): string {
   const days = plan.days.filter((d) => !day || d.day === day);
   const points = days.flatMap((d) =>
     d.stops
-      .filter((s) => s.location)
       .map((s, i) => ({
         ...s,
         day: d.day,
         index: i + 1,
         color: DAY_COLORS[(d.day - 1) % DAY_COLORS.length],
-      })),
+      }))
+      .filter((s) => s.location),
   );
   if (!points.length)
     return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="380" viewBox="0 0 960 380"><rect width="960" height="380" fill="#f1f3ed"/><text x="480" y="170" text-anchor="middle" font-family="Microsoft YaHei,sans-serif" font-size="24" fill="#526650">地图等待地点核验</text><text x="480" y="215" text-anchor="middle" font-family="Microsoft YaHei,sans-serif" font-size="16" fill="#818b7c">配置高德 Key 并重新规划后，显示景点分布与每日线路</text></svg>`;
@@ -66,25 +77,54 @@ export function schematic(plan: Plan, day?: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="${height}" viewBox="0 0 960 ${height}"><defs><pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#d9dfd1"/></pattern></defs><rect width="960" height="${height}" fill="#eef1e7"/><rect width="960" height="${height}" fill="url(#grid)"/><text x="30" y="35" font-family="Microsoft YaHei,sans-serif" font-size="14" fill="#6d7b62">${escapeHtml(plan.destination)} · ${plan.mode === "demo" ? "演示行程" : "游览顺序"}示意</text><text x="30" y="${height - 25}" font-family="Microsoft YaHei,sans-serif" font-size="12" fill="#87907d">非高德底图 · 示意顺序，无地理比例${days.length > 4 ? " · 总览显示前4天，完整路线请逐日查看" : ""}</text>${content}</svg>`;
 }
 const cache = new Map<string, MapResult>();
+export function imageDataUri(data: ArrayBuffer): string {
+  const bytes = Buffer.from(data);
+  const mime = bytes
+    .subarray(0, 8)
+    .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    ? "image/png"
+    : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
+      ? "image/jpeg"
+      : bytes.toString("ascii", 0, 4) === "RIFF" &&
+          bytes.toString("ascii", 8, 12) === "WEBP"
+        ? "image/webp"
+        : "";
+  if (!mime || bytes.length > 12000000) throw new Error("高德地图图片无效");
+  return `data:${mime};base64,${bytes.toString("base64")}`;
+}
 export async function getMap(
   plan: Plan,
   config: Config,
   day?: number,
+  options: { signal?: AbortSignal; resolveLocations?: boolean } = {},
 ): Promise<MapResult> {
+  options.signal?.throwIfAborted();
+  if (options.resolveLocations !== false)
+    await enrichLocations(plan, config, { day, signal: options.signal });
   const selected = plan.days.filter((d) => !day || d.day === day);
+  const stops = selected.flatMap((d) =>
+    d.stops.map((s, i) => ({
+      day: d.day,
+      index: i + 1,
+      name: s.name,
+      location: s.location,
+      note: s.locationNote,
+    })),
+  );
   const missing = selected.flatMap((d) =>
     d.stops.filter((s) => !s.location).map((s) => s.name),
   );
   const points = selected.flatMap((d) =>
     d.stops
-      .filter((s) => s.location)
-      .map((s, i) => ({ location: s.location!, day: d.day, index: i + 1 })),
+      .map((s, i) => ({ location: s.location!, day: d.day, index: i + 1 }))
+      .filter((s) => s.location),
   );
   const fallback = (caption: string): MapResult => ({
     kind: points.length ? "schematic" : "unavailable",
     image: `data:image/svg+xml;base64,${Buffer.from(schematic(plan, day)).toString("base64")}`,
     caption,
     missing,
+    stops,
   });
   if (!config.amapKey)
     return fallback(
@@ -92,16 +132,56 @@ export async function getMap(
     );
   if (!points.length)
     return fallback(
-      "未取得已核验的地点坐标，无法生成高德地图。请检查高德连接后重新生成行程。",
+      "暂未取得已核验的地点坐标。请点击重新核验，或在设置中检查高德 Web 服务 Key。",
     );
-  const cacheKey = `${plan.id}:${day || 0}:${createHash("sha256").update(config.amapKey).digest("hex").slice(0, 10)}`;
+  const cacheKey = createHash("sha256")
+    .update(JSON.stringify(["map-v3", plan.id, day, config.amapKey, stops]))
+    .digest("hex");
   if (cache.has(cacheKey)) return cache.get(cacheKey)!;
+  const assetPath = path.join(DATA_DIR, "maps", `${cacheKey}.json`);
+  try {
+    const stat = await fs.stat(assetPath);
+    if (stat.size < 17_000_000 && Date.now() - stat.mtimeMs < 30 * 86400_000) {
+      const saved = JSON.parse(
+        await fs.readFile(assetPath, "utf8"),
+      ) as MapResult;
+      if (
+        saved.kind === "amap" &&
+        /^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(saved.image)
+      ) {
+        if (cache.size > 150) cache.clear();
+        cache.set(cacheKey, saved);
+        return saved;
+      }
+    }
+  } catch {
+    /* Missing or incomplete assets are generated again below. */
+  }
   // Amap static maps accept at most 10 markers and 4 paths; each daily map has <= 8 stops.
   const visible = points.slice(0, 10);
-  const markers = visible
+  const grouped = new Map<string, typeof visible>();
+  for (const point of visible) {
+    const coordinate = point.location.join(",");
+    grouped.set(coordinate, [...(grouped.get(coordinate) || []), point]);
+  }
+  const markers = [...grouped.values()]
+    .map((group) => group[0])
     .map(
       (p) =>
-        `mid,0x${DAY_COLORS[(p.day - 1) % DAY_COLORS.length].slice(1)},${p.index}:${p.location.join(",")}`,
+        `large,0x${DAY_COLORS[(p.day - 1) % DAY_COLORS.length].slice(1)},${p.index}:${p.location.join(",")}`,
+    )
+    .join("|");
+  const labels = [...grouped.entries()]
+    .filter(([, group]) => group.length > 1)
+    .map(
+      ([coordinate, group]) =>
+        `${group
+          .map((p) => (day ? p.index : `${p.day}.${p.index}`))
+          .join("/")
+          .slice(
+            0,
+            15,
+          )},0,1,16,0xFFFFFF,0x${DAY_COLORS[(group[0].day - 1) % DAY_COLORS.length].slice(1)}:${coordinate}`,
     )
     .join("|");
   const paths = selected
@@ -115,9 +195,17 @@ export async function getMap(
     .filter(Boolean)
     .join("|");
   try {
-    const response = await fetch(
-      `https://restapi.amap.com/v3/staticmap?${new URLSearchParams({ key: config.amapKey, size: "960*380", scale: "2", markers, ...(paths ? { paths } : {}) })}`,
-      { signal: AbortSignal.timeout(25000) },
+    const response = await amapFetch(
+      config,
+      "v3/staticmap",
+      {
+        size: day ? "480*384" : "800*480",
+        scale: "1",
+        markers,
+        ...(labels ? { labels } : {}),
+        ...(paths ? { paths } : {}),
+      },
+      options.signal,
     );
     if (
       !response.ok ||
@@ -125,17 +213,26 @@ export async function getMap(
     )
       throw new Error("高德静态地图返回无效结果，请检查 Web 服务 Key 权限");
     const data = await response.arrayBuffer();
+    options.signal?.throwIfAborted();
     if (data.byteLength > 12000000) throw new Error("地图数据过大");
     const result: MapResult = {
       kind: "amap",
-      image: `data:${response.headers.get("content-type")};base64,${Buffer.from(data).toString("base64")}`,
-      caption: `高德地图 · 连线表示游览顺序，并非导航路线。${points.length > 10 ? "总览仅展示前 10 个地点，完整标记请查看每天的地图。" : ""}${missing.length ? `另有 ${missing.length} 个地点未能核验坐标。` : ""}`,
+      image: imageDataUri(data),
+      caption: `高德地图 · 连线表示游览顺序，并非导航路线。${labels ? "同一位置多次停留的编号合并显示。" : ""}${points.length > 10 ? "总览仅展示前 10 个地点，完整标记请查看每天的地图。" : ""}${missing.length ? `另有 ${missing.length} 个地点未能核验坐标。` : ""}`,
       missing,
+      stops,
     };
     if (cache.size > 150) cache.clear();
     cache.set(cacheKey, result);
+    try {
+      await fs.mkdir(path.dirname(assetPath), { recursive: true });
+      await fs.writeFile(assetPath, JSON.stringify(result), { mode: 0o600 });
+    } catch {
+      /* Memory cache still serves the generated map if disk is read-only. */
+    }
     return result;
   } catch (e) {
+    options.signal?.throwIfAborted();
     return fallback(`高德地图加载失败：${safeError(e)}。当前展示为位置示意。`);
   }
 }

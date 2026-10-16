@@ -12,11 +12,15 @@
     "build": "npm run build -w server && npm run build -w client",
     "check": "npm run check -w server && npm run check -w client",
     "start": "npm run start -w server",
-    "test": "node --import tsx --test server/tests/core.test.ts server/tests/mcp.test.ts server/tests/workflow.test.ts server/tests/photos-html.test.ts",
+    "test": "node --import tsx --test server/tests/core.test.ts server/tests/mcp.test.ts server/tests/workflow.test.ts server/tests/photos-html.test.ts server/tests/maps-places.test.ts server/tests/tickets.test.ts server/tests/quality-revisions.test.ts server/tests/planning.test.ts server/tests/work-progress.test.ts",
+    "test:revisions": "node --import tsx scripts/revisions-smoke.mjs",
     "test:ui": "node --import tsx scripts/ui-smoke.mjs",
+    "test:confirmation": "node --import tsx scripts/confirmation-smoke.mjs",
+    "test:recovery": "node --import tsx scripts/workflow-recovery-smoke.mjs",
     "test:production": "node scripts/production-smoke.mjs",
     "format": "prettier --write client/src server/src server/tests shared scripts",
-    "import-config": "node scripts/import-config.mjs"
+    "import-config": "node scripts/import-config.mjs",
+    "test:tickets:live": "npm run build && node scripts/tickets-live-smoke.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

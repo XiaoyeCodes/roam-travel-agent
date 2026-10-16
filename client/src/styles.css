@@ -1576,7 +1576,7 @@ main {
   justify-content: center;
   border: 1px solid #e9eddf;
 }
-.map-image img {
+.map-image > .map-fallback {
   width: 100%;
   height: auto;
   min-height: 150px;
@@ -1585,7 +1585,7 @@ main {
 .map-panel.compact {
   padding: 18px;
 }
-.compact .map-image img {
+.compact .map-image > .map-fallback {
   height: 195px;
   object-fit: contain;
 }
@@ -2168,6 +2168,7 @@ main {
   gap: 23px;
 }
 .history-card {
+  min-width: 0;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -2192,6 +2193,100 @@ main {
   justify-content: space-between;
   padding: 28px;
   color: #a5b694;
+}
+.history-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.history-open:focus-visible {
+  outline: 3px solid #52775f;
+  outline-offset: -4px;
+  border-radius: 8px;
+}
+.history-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition:
+    opacity 0.3s,
+    transform 0.45s;
+}
+.history-art.has-photo img {
+  opacity: 1;
+}
+.history-art.has-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    #10251e0d 0%,
+    #10251e33 30%,
+    #10251eaa 100%
+  );
+}
+.history-art.has-photo > span {
+  position: relative;
+  z-index: 1;
+  color: #fff;
+  text-shadow: 0 2px 12px #10251e66;
+  letter-spacing: 4px;
+}
+.history-art > span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.history-art.has-photo i {
+  z-index: 1;
+  color: #fff;
+  border-color: #ffffff66;
+  background: #173e3659;
+  backdrop-filter: blur(8px);
+}
+.history-open:hover .history-art.has-photo img {
+  transform: scale(1.035);
+}
+.history-photo-credit {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 23px;
+  border-top: 1px solid var(--line);
+  font-size: 10px;
+  color: #7b8873;
+  line-height: 1.6;
+  flex-wrap: wrap;
+}
+.history-photo-credit a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+.history-photo-credit a:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.history-no-photo {
+  position: absolute;
+  right: 20px;
+  bottom: 22px;
+  font-size: 10px;
+  color: #7c9267;
+}
+@media (prefers-reduced-motion: reduce) {
+  .history-art img {
+    transition: none;
+  }
+  .history-open:hover .history-art.has-photo img {
+    transform: none;
+  }
 }
 .history-art > span {
   font-size: 32px;
@@ -3883,7 +3978,7 @@ main {
   .map-panel.compact {
     padding: 18px;
   }
-  .compact .map-image img {
+  .compact .map-image > .map-fallback {
     height: 185px;
   }
   .budget-preview {
@@ -4527,5 +4622,734 @@ main {
     animation: none !important;
     scroll-behavior: auto !important;
     transition: none !important;
+  }
+}
+/* Destination cover and daily map details */
+.itinerary-layout > section {
+  min-width: 0;
+}
+.plan-cover.with-photo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 40%);
+  gap: 28px;
+  align-items: center;
+  padding: 28px 32px;
+}
+.plan-cover-photo.stop-photo {
+  margin: 0;
+  min-width: 0;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+.plan-cover-photo .stop-photo-link {
+  border-radius: 70px 10px 10px 10px;
+}
+.plan-cover-photo .stop-photo-link img {
+  height: 235px;
+  width: 100%;
+  object-fit: cover;
+}
+.plan-cover-photo figcaption {
+  font-size: 10px;
+  line-height: 1.6;
+  gap: 5px;
+  margin-top: 6px;
+}
+.map-repair {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.compact-map-stops {
+  list-style: none;
+  padding: 12px 0 0;
+  margin: 12px 0 0;
+  border-top: 1px solid #e5e9df;
+  display: grid;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.compact-map-stops li {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+}
+.compact-map-stops b {
+  border-radius: 50%;
+  color: white;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  font: 11px/20px Arial;
+}
+.compact-map-stops small {
+  color: #9b8a70;
+  font-size: 10px;
+}
+.map-panel.compact .map-image > .map-fallback {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 220px;
+  object-fit: contain;
+}
+@media (max-width: 900px) {
+  .plan-cover.with-photo {
+    grid-template-columns: 1fr 38%;
+    padding: 24px;
+    gap: 20px;
+  }
+  .plan-cover-photo .stop-photo-link img {
+    height: 210px;
+  }
+}
+@media (max-width: 600px) {
+  .plan-cover.with-photo {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .plan-cover-photo .stop-photo-link img {
+    height: 210px;
+  }
+  .plan-cover-photo figcaption {
+    display: block;
+  }
+  .plan-cover-photo figcaption small {
+    display: block;
+    margin-top: 4px;
+  }
+}
+
+/* Choose a direction before the detailed itinerary is generated. */
+.proposal-review {
+  margin: 24px 0 32px;
+}
+.proposal-heading {
+  text-align: center;
+  max-width: 760px;
+  margin: 0 auto 28px;
+}
+.proposal-heading h1 {
+  font-family: var(--serif);
+  font-size: clamp(24px, 3vw, 34px);
+  margin: 18px 0 14px;
+}
+.proposal-heading > p {
+  color: #697667;
+  line-height: 1.9;
+}
+.proposal-steps {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  font-size: 13px;
+  color: #7b887b;
+  margin-top: 22px;
+}
+.proposal-steps strong {
+  color: var(--green);
+}
+.proposal-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+.proposal-option {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  min-width: 0;
+  border: 2px solid var(--line);
+  padding: 24px;
+}
+.proposal-option.selected {
+  border-color: #53765c;
+  background: #f8fbf5;
+}
+.proposal-option-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.proposal-letter {
+  font-family: var(--serif);
+  font-size: 32px;
+  color: #53765c;
+}
+.proposal-option h2 {
+  font-size: 20px;
+  line-height: 1.5;
+}
+.proposal-option > p {
+  font-size: 13px;
+  color: #657160;
+  line-height: 1.9;
+}
+.proposal-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.proposal-highlights span {
+  background: #edf2e8;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.proposal-outline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 16px;
+}
+.proposal-outline li {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.proposal-outline li > span {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  color: #788c72;
+  flex-shrink: 0;
+  padding-top: 3px;
+}
+.proposal-outline p {
+  color: #76806f;
+  font-size: 12px;
+}
+.proposal-cost {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.proposal-cost strong {
+  display: block;
+  color: var(--ink);
+}
+.proposal-cautions {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.9;
+  color: #887250;
+}
+.proposal-sources {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: #67795c;
+  overflow-wrap: anywhere;
+}
+.proposal-sources a {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.proposal-option > button {
+  margin-top: auto;
+  width: 100%;
+}
+.proposal-feedback {
+  margin-top: 22px;
+}
+.proposal-feedback h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 21px;
+  margin-bottom: 12px;
+}
+.proposal-feedback > p {
+  font-size: 13px;
+  color: #6d7967;
+  line-height: 1.9;
+}
+.proposal-feedback .field {
+  margin: 20px 0;
+}
+.proposal-feedback textarea {
+  width: 100%;
+  resize: vertical;
+}
+.proposal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.proposal-history {
+  margin-top: 18px;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.proposal-history p {
+  margin: 10px 0;
+  padding-left: 12px;
+  border-left: 2px solid #b4c3a7;
+  white-space: pre-wrap;
+}
+.proposal-notices {
+  margin: 20px 0;
+  font-size: 12px;
+  line-height: 1.9;
+  color: #7d826e;
+}
+.proposal-review .error-banner {
+  margin-bottom: 18px;
+}
+.confirmed-direction {
+  margin: 16px 0;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.confirmed-direction p {
+  margin-top: 8px;
+  white-space: pre-wrap;
+}
+@media (max-width: 640px) {
+  .proposal-option {
+    padding: 20px;
+  }
+  .proposal-actions {
+    flex-direction: column-reverse;
+  }
+  .proposal-actions button {
+    width: 100%;
+    font-size: 12px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .proposal-feedback h2 {
+    font-size: 19px;
+  }
+}
+.map-expand-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+.map-preview-dialog {
+  border: 1px solid #e1e7da;
+  border-radius: 15px;
+  padding: 20px;
+  max-width: 94vw;
+  max-height: 94vh;
+}
+.map-preview-dialog::backdrop {
+  background: #183e2db3;
+}
+.map-preview-dialog > button {
+  margin: 0 0 14px auto;
+  display: flex;
+}
+.map-preview-dialog > img {
+  display: block;
+  width: min(800px, 85vw);
+  max-height: 78vh;
+  object-fit: contain;
+}
+/* Built-in ticket services and real query results. */
+.ticket-services {
+  margin-bottom: 28px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line, #deded6);
+}
+.ticket-service-states {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.ticket-service-state {
+  padding: 14px;
+  border: 1px solid var(--line, #deded6);
+  border-radius: 12px;
+}
+.ticket-service-state .pill {
+  margin-left: 8px;
+}
+.ticket-service-state p,
+.ticket-service-state small {
+  font-size: 12px;
+  line-height: 1.65;
+}
+.ticket-query-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 14px 0;
+}
+.ticket-query-result {
+  margin-top: 20px;
+  overflow-wrap: anywhere;
+}
+.ticket-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line, #deded6);
+}
+.ticket-option > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.ticket-option > div:last-child {
+  text-align: right;
+  flex-shrink: 0;
+}
+.ticket-option span,
+.ticket-option small {
+  font-size: 12px;
+  line-height: 1.5;
+}
+@media (max-width: 560px) {
+  .ticket-service-states {
+    grid-template-columns: 1fr;
+  }
+  .ticket-option {
+    flex-direction: column;
+  }
+  .ticket-option > div:last-child {
+    text-align: left;
+  }
+}
+
+/* The map canvas owns SDK image sizing; only the fallback image uses card sizing. */
+.map-image.roam-map-frame {
+  height: 440px;
+  display: block;
+}
+.compact .map-image.roam-map-frame {
+  height: 320px;
+}
+.map-panel .map-image.roam-map-frame > .map-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  min-height: 0;
+}
+/* Local itinerary changes: a focused preview, with the saved itinerary behind it. */
+.revision-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 0 22px;
+  flex-wrap: wrap;
+}
+.revision-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.revision-toolbar strong {
+  font-size: 13px;
+  color: #3d5b49;
+}
+.revision-toolbar span {
+  font-size: 11px;
+  color: #7b8578;
+}
+.stop-edit {
+  margin-top: 13px !important;
+  font-size: 11px !important;
+}
+.weather-line {
+  flex-wrap: wrap;
+}
+.itinerary-editor {
+  background: #fafbf7;
+  border: 1px solid #dce3d7;
+  border-radius: 20px;
+  width: min(820px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 100px #183a3038;
+  outline: none;
+  overflow: hidden;
+}
+.editor-head {
+  padding: 24px 28px 20px;
+  border-bottom: 1px solid #e2e8dc;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.editor-head h2 {
+  font-size: 25px;
+  margin: 8px 0;
+}
+.editor-head p {
+  font-size: 12px;
+  color: #7a8678;
+}
+.editor-head .eyebrow {
+  font-size: 9px;
+  letter-spacing: 2px;
+}
+.editor-body {
+  padding: 24px 28px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+.editor-body .field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.editor-body .field > span {
+  font-size: 12px;
+  color: #5b6d5b;
+}
+.editor-body input:not([type="checkbox"]),
+.editor-body textarea,
+.editor-body select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #d7dfd0;
+  border-radius: 8px;
+  background: white;
+  color: #304c3e;
+  font: inherit;
+  font-size: 13px;
+}
+.editor-body textarea {
+  resize: vertical;
+  line-height: 1.7;
+}
+.editor-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.editor-tabs button {
+  padding: 9px 16px;
+  border: 1px solid #dce4d5;
+  border-radius: 30px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+.editor-tabs button[aria-pressed="true"] {
+  background: #285140;
+  color: white;
+  border-color: #285140;
+}
+.edit-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.edit-examples button {
+  background: #eef2e8;
+  border-radius: 7px;
+  padding: 8px 11px;
+  font-size: 11px;
+  text-align: left;
+  line-height: 1.6;
+  color: #68805f;
+}
+.planning-fields fieldset {
+  min-width: 0;
+  border: 1px solid #dce4d6;
+  border-radius: 12px;
+  padding: 18px;
+  margin: 20px 0;
+  background: #fcfdf9;
+}
+.planning-fields legend {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 0 8px;
+  font-size: 13px;
+  color: #3d6148;
+}
+.planning-fields .planning-checkbox,
+.planning-checks label,
+.cost-edit-actions label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.planning-fields input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  accent-color: #285140;
+  padding: 0;
+}
+.planning-fields .planning-checkbox {
+  margin-bottom: 16px;
+}
+.planning-checks,
+.cost-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 16px 0;
+}
+.cost-edit-actions {
+  justify-content: space-between;
+}
+.cost-edit-actions button {
+  font-size: 11px;
+}
+.planning-fields .field {
+  min-width: 0;
+}
+.planning-fields select {
+  max-width: 100%;
+}
+.edit-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 12px;
+}
+.manual-operations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.manual-operations button {
+  font-size: 11px;
+}
+.edit-locks {
+  border-top: 1px solid #e0e6d8;
+  padding-top: 18px;
+  margin-top: 22px;
+}
+.edit-locks summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.edit-locks p {
+  font-size: 11px;
+  margin: 12px 0;
+  color: #7e8977;
+}
+.edit-locks label {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 12px;
+}
+.edit-locks input {
+  accent-color: #285140;
+}
+.editor-footer {
+  padding: 18px 28px;
+  border-top: 1px solid #e1e6db;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+}
+.editor-footer .button {
+  font-size: 12px;
+}
+.edit-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 20px;
+  padding: 50px 10px;
+}
+.edit-progress p {
+  font-size: 12px;
+  color: #7d8b75;
+}
+.revision-preview h3 {
+  font-size: 18px;
+  margin: 22px 0 12px;
+}
+.preview-day summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: #3c664a;
+  padding: 12px 0;
+}
+.preview-day article {
+  padding: 16px 0;
+  border-top: 1px solid #e0e6d8;
+}
+.preview-day article > strong {
+  font-size: 13px;
+}
+.preview-day article > p {
+  font-size: 12px;
+  margin-top: 7px;
+  color: #7c8875;
+}
+@media (max-width: 600px) {
+  .itinerary-editor {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 13px;
+  }
+  .editor-head,
+  .editor-body,
+  .editor-footer {
+    padding: 18px;
+  }
+  .editor-head h2 {
+    font-size: 21px;
+  }
+  .edit-field-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .edit-field-grid > .field:last-child {
+    grid-column: 1/-1;
+  }
+  .editor-footer .button {
+    padding: 10px 12px;
+    min-width: 0;
+  }
+  .revision-toolbar > div:last-child {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .revision-toolbar .button {
+    font-size: 11px;
+    padding: 10px;
+  }
+  .verification-head {
+    align-items: flex-start !important;
   }
 }

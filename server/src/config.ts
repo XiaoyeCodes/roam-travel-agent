@@ -47,6 +47,8 @@ export type Config = {
   model: string;
   apiKey: string;
   amapKey: string;
+  amapJsKey?: string;
+  amapJsSecurityCode?: string;
   unsplashKey: string;
   searchKey: string;
   mcpServers: McpConfig[];
@@ -57,12 +59,23 @@ export const configPatchSchema = z
     model: z.string().trim().min(1).max(100).optional(),
     apiKey: z.string().max(4000).optional(),
     amapKey: z.string().max(4000).optional(),
+    amapJsKey: z.string().trim().max(200).optional(),
+    amapJsSecurityCode: z.string().trim().max(200).optional(),
     unsplashKey: z.string().max(4000).optional(),
     searchKey: z.string().max(4000).optional(),
     mcpServer: mcpSchema.optional(),
     removeMcpId: z.string().max(40).optional(),
     clearKeys: z
-      .array(z.enum(["apiKey", "amapKey", "unsplashKey", "searchKey"]))
+      .array(
+        z.enum([
+          "apiKey",
+          "amapKey",
+          "amapJsKey",
+          "amapJsSecurityCode",
+          "unsplashKey",
+          "searchKey",
+        ]),
+      )
       .optional(),
   })
   .strict();
@@ -79,6 +92,8 @@ function initial(): Config {
     model: process.env.LLM_MODEL || "deepseek-flash",
     apiKey: process.env.LLM_API_KEY || "",
     amapKey: process.env.AMAP_KEY || "",
+    amapJsKey: process.env.AMAP_JS_KEY || "",
+    amapJsSecurityCode: process.env.AMAP_JS_SECURITY_CODE || "",
     unsplashKey: process.env.UNSPLASH_ACCESS_KEY || "",
     searchKey: process.env.TAVILY_API_KEY || "",
     mcpServers: envMcp,
@@ -95,6 +110,8 @@ export function publicConfig(): PublicConfig {
     model: config.model,
     hasLlmKey: !!config.apiKey,
     hasAmapKey: !!config.amapKey,
+    hasAmapJsKey: !!config.amapJsKey,
+    hasAmapJsSecurityCode: !!config.amapJsSecurityCode,
     hasUnsplashKey: !!config.unsplashKey,
     hasSearchKey: !!config.searchKey,
     mcpServers: config.mcpServers.map((s) => ({
@@ -113,6 +130,8 @@ export function updateConfig(input: unknown) {
     "model",
     "apiKey",
     "amapKey",
+    "amapJsKey",
+    "amapJsSecurityCode",
     "unsplashKey",
     "searchKey",
   ] as const)
@@ -139,6 +158,8 @@ export function safeError(error: unknown) {
   for (const secret of [
     config.apiKey,
     config.amapKey,
+    config.amapJsKey || "",
+    config.amapJsSecurityCode || "",
     config.unsplashKey,
     config.searchKey,
     ...config.mcpServers.flatMap((s) => [s.token || "", s.url]),

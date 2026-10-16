@@ -1,0 +1,6 @@
+fast-flights==3.1.0
+# fast-flights 3.1.0 imports this but omits it from its package dependencies.
+typing-extensions==4.15.0
+primp==2.0.1
+protobuf==7.36.2
+selectolax==1.0.0

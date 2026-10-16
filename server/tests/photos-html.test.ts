@@ -5,6 +5,9 @@ import { demoPlan } from "../src/demo.js";
 import { enrichPhotos, searchPhotos, trackPhotoExport } from "../src/photos.js";
 import { buildTravelHtml, renderHtml } from "../src/html.js";
 import type { Config } from "../src/config.js";
+import { browserMapData, browserMapConfig } from "../src/browser-map.js";
+import { itineraryMapPoints } from "../../shared/interactive-map.js";
+import { Script } from "node:vm";
 const config: Config = {
   baseUrl: "",
   model: "",
@@ -98,7 +101,14 @@ test("per-stop search deduplicates queries, handles empty/error results and vali
   plan.days[0].stops.forEach((s) => (s.photoQuery = "empty"));
   await enrichPhotos(plan, live, { force: true });
   assert.ok(
-    plan.days[0].stops.every((s) => !s.photo && s.photoStatus === "not_found"),
+    plan.days[0].stops
+      .filter((s) => s.type === "attraction")
+      .every((s) => !s.photo && s.photoStatus === "not_found"),
+  );
+  assert.ok(
+    plan.days[0].stops
+      .find((s) => s.type === "food")
+      ?.photo?.caption?.includes("非推荐餐馆"),
   );
   const controller = new AbortController();
   controller.abort();
@@ -131,4 +141,97 @@ test("HTML export contains every daily map, credited photos and safe self-contai
     ),
   );
   assert.ok(!html.includes(config.unsplashKey || "test-photo-key"));
+});
+
+test("interactive maps preserve daily indices, repeated visits and only verified coordinates", () => {
+  const plan = demoPlan("interactive-points");
+  plan.days[0].stops.forEach((s) => {
+    s.verified = true;
+  });
+  plan.days[0].stops[1].verified = false;
+  plan.days[0].stops[3].location = plan.days[0].stops[0].location;
+  const points = itineraryMapPoints(plan, 1);
+  assert.deepEqual(
+    points.map((p) => p.index),
+    [1, 3, 4],
+  );
+  assert.equal(
+    points.every((p) => p.day === 1),
+    true,
+  );
+  assert.deepEqual(points[0].location, points[2].location);
+  assert.equal(itineraryMapPoints(plan, 2).length, 0);
+  plan.days[0].stops[0].location = [181, 31];
+  assert.deepEqual(
+    itineraryMapPoints(plan, 1).map((p) => p.index),
+    [3, 4],
+  );
+  const live = {
+    ...config,
+    amapKey: "server-web-secret",
+    apiKey: "llm-secret",
+    amapJsKey: "browser-js-key",
+    amapJsSecurityCode: "browser-security-code",
+  };
+  const data = browserMapData(plan, live, 1);
+  assert.equal(data.key, "browser-js-key");
+  assert.equal(data.securityCode, "browser-security-code");
+  assert.equal(JSON.stringify(data).includes("server-web-secret"), false);
+  assert.equal(JSON.stringify(data).includes("llm-secret"), false);
+});
+
+test("interactive HTML embeds all days safely, never exports the Web Service Key, and hashes the actual script", async () => {
+  const plan = demoPlan("interactive-html");
+  plan.days[2].stops.push({
+    ...plan.days[2].stops[0],
+    name: "第十一处地点",
+    location: [118.7, 32.1],
+  });
+  plan.days.forEach((d) =>
+    d.stops.forEach((s) => {
+      s.verified = true;
+    }),
+  );
+  plan.days[0].stops[0].name = '</script><img src=x onerror="window.PWNED=1">';
+  const live = {
+    ...config,
+    amapKey: "server-web-secret",
+    amapJsKey: "browser-js-key",
+    amapJsSecurityCode: "browser-security-code",
+  };
+  const map = {
+    kind: "schematic" as const,
+    image: "data:image/svg+xml;base64,PHN2Zy8+",
+    caption: "fallback",
+    missing: [],
+  };
+  const html = buildTravelHtml(
+    plan,
+    plan.days.map(() => map),
+    map,
+    0,
+    browserMapConfig(live),
+  );
+  assert.equal(
+    (html.match(/data-interactive-map="/g) || []).length,
+    plan.days.length + 1,
+  );
+  assert.equal((html.match(/<script>/g) || []).length, 1);
+  assert.equal((html.match(/<\/script>/g) || []).length, 1);
+  const script = html.match(/<script>([\s\S]+)<\/script>/)![1];
+  assert.doesNotThrow(() => new Script(script));
+  assert.ok(script.includes("\\u003c/script\\u003e"));
+  assert.ok(html.includes("browser-js-key"));
+  assert.ok(!html.includes("server-web-secret"));
+  assert.ok(
+    html.includes(
+      `sha256-${createHash("sha256").update(script).digest("base64")}`,
+    ),
+  );
+  assert.ok(html.includes("https://*.amap.com"));
+  assert.equal(
+    (html.match(/class="map-fallback"/g) || []).length,
+    plan.days.length + 1,
+  );
+  assert.ok(itineraryMapPoints(plan).length > 10);
 });

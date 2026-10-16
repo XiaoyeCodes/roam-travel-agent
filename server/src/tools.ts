@@ -5,6 +5,10 @@ import { safeError } from "./config.js";
 import type { ToolDef } from "./llm.js";
 import type { Evidence } from "../../shared/types.js";
 import { dateAt } from "./schema.js";
+import { amap } from "./amap.js";
+import { queryTickets } from "./tickets.js";
+import { ticketServiceStatus } from "./ticket-runtime.js";
+export { amap } from "./amap.js";
 type ToolResult = { source: string; status: Evidence["status"]; data: unknown };
 export type BuiltinTool = {
   definition: ToolDef;
@@ -43,30 +47,39 @@ export async function fetchJson(
   if (!response.ok) throw new Error(`外部服务返回 HTTP ${response.status}`);
   return response.json();
 }
-export async function amap(
-  config: Config,
-  endpoint: string,
-  params: Record<string, string>,
-  signal?: AbortSignal,
-) {
-  if (!config.amapKey) throw new Error("高德 Key 尚未配置");
-  const data = await fetchJson(
-    `https://restapi.amap.com/${endpoint}?${new URLSearchParams({ ...params, key: config.amapKey })}`,
-    {},
-    signal,
-  );
-  if (data.status !== "1")
-    throw new Error(
-      `高德服务调用失败（${String(data.infocode || "unknown")}）`,
-    );
-  return data;
-}
 export function makeTools(config: Config): BuiltinTool[] {
   return [
+    ...(["rail", "flight"] as const).map((kind): BuiltinTool => ({
+      definition: def(
+        kind === "rail" ? "search_train_tickets" : "search_flights",
+        kind === "rail"
+          ? "免费查询12306高铁/动车车次、时刻、席别余票和票价，无需Key。origin/destination为中文城市或车站名；仅支持含今天的15天预售期。价格为每位成人单程价。往返需分别查询。"
+          : "免费通过fast-flights查询Google Flights航班及人民币报价，无需Key。支持常见中文城市名或准确IATA三字机场码。默认仅直飞，可用maxStops=1查询一次中转。passengers为成人人数，返回该人数经济舱单程总价；无余位数量。往返需分别查询。失败/空结果不得编造价格。",
+        {
+          origin: str,
+          destination: str,
+          date: { type: "string", description: "YYYY-MM-DD" },
+          passengers: { type: "integer", minimum: 1, maximum: 9 },
+          limit: { type: "integer", minimum: 1, maximum: 10 },
+          ...(kind === "flight"
+            ? { maxStops: { type: "integer", minimum: 0, maximum: 1 } }
+            : {}),
+        },
+        ["origin", "destination", "date"],
+      ),
+      run: async (raw, signal) => ({
+        source:
+          kind === "rail"
+            ? "12306 / 本地免费查询"
+            : "Google Flights / fast-flights",
+        status: "live",
+        data: await queryTickets(kind, raw, signal),
+      }),
+    })),
     {
       definition: def(
         "search_places",
-        "高德 POI 搜索。按城市、用户偏好搜索景点/酒店/餐馆，返回 GCJ-02 坐标。酒店 POI 不等于实时房价。",
+        "高德 POI 搜索。按城市、用户偏好搜索景点/酒店/餐馆，返回 POI id、准确名称、地址、GCJ-02 坐标和地点照片。请把选定地点的 id 与名称传给路线专家和总规划师，供地图、照片共同使用。酒店 POI 不等于实时房价。",
         {
           city: str,
           keywords: str,
@@ -114,6 +127,11 @@ export function makeTools(config: Config): BuiltinTool[] {
             address: p.address,
             location: p.location,
             type: p.type,
+            typecode: p.typecode,
+            cityname: p.cityname,
+            adname: p.adname,
+            adcode: p.adcode,
+            photos: Array.isArray(p.photos) ? p.photos.slice(0, 3) : [],
             tel: p.tel,
             rating: p.biz_ext?.rating,
             averageCost: p.biz_ext?.cost,
@@ -299,7 +317,7 @@ export function makeTools(config: Config): BuiltinTool[] {
     {
       definition: def(
         "ticket_sources",
-        "检查高铁和机票接入情况。实时车次/余票必须调用交通 MCP 查询；该工具不提供价格，不可当作查票成功。",
+        "检查内置免费铁路/机票服务状态。查票需继续调用search_train_tickets或search_flights；此工具不提供价格，不可当作查票成功。",
         { origin: str, destination: str, date: str, returnDate: str },
         ["origin", "destination", "date", "returnDate"],
       ),
@@ -314,11 +332,12 @@ export function makeTools(config: Config): BuiltinTool[] {
           .parse(raw);
         return {
           source: "票务服务状态",
-          status: "unconfigured",
+          status: "live",
           data: {
             ...args,
+            services: ticketServiceStatus(),
             message:
-              "请调用已连接的交通 MCP 获取往返票务。若没有对应查询工具，车次、航班、余票、价格全部标记待查询；12306 只提供铁路票务，机票须另接服务。",
+              "免费票务已内置，无需配置Key。调用search_train_tickets查询高铁、search_flights查询航班；去程与返程分别查询。服务就绪不代表已查到票，失败或空结果保留未知。",
             railUrl: "https://www.12306.cn/",
             flightUrl: "https://flights.ctrip.com/",
           },

@@ -1,4 +1,18 @@
-export const PHOTO_VERSION = 2;
+import type {
+  DayCheck,
+  Fact,
+  LocalTravelMode,
+  OpeningInfo,
+  PlanQuality,
+  StopFacts,
+} from "./quality.js";
+import type {
+  RevisionDraft,
+  RevisionHistory,
+  RevisionSummary,
+} from "./revisions.js";
+import type { CostLedger, JourneyConstraints } from "./planning.js";
+export const PHOTO_VERSION = 3;
 export const AGENTS = [
   {
     id: "attractions",
@@ -81,17 +95,79 @@ export type AgentReport = {
   evidenceIds: string[];
   status: "done" | "error";
 };
+export type TravelOption = {
+  id: string;
+  title: string;
+  summary: string;
+  highlights: string[];
+  outline: { day: number; title: string; places: string[] }[];
+  pace: TripRequest["pace"];
+  costNote: string;
+  cautions: string[];
+  sourceUrls: string[];
+};
+export type TravelProposal = {
+  id: string;
+  version: number;
+  message: string;
+  options: TravelOption[];
+  sources: { title: string; url: string }[];
+  notices: string[];
+  evidence: Evidence[];
+  createdAt: string;
+};
+export type ProposalDecision = {
+  proposalId: string;
+  action: "confirm" | "revise";
+  optionId?: string;
+  notes: string;
+};
+export type ProposalFeedback = ProposalDecision & {
+  option?: TravelOption;
+  at: string;
+};
+export type ConfirmedSelection = {
+  proposalId: string;
+  option: TravelOption;
+  alternatives?: TravelOption[];
+  notes: string[];
+  confirmedAt: string;
+};
 export type TripEvent = {
   id: number;
   at: string;
-  type: "status" | "tool" | "message" | "report" | "complete" | "error";
+  type:
+    | "status"
+    | "tool"
+    | "message"
+    | "report"
+    | "proposal"
+    | "complete"
+    | "error";
   agent: AgentId | "planner" | "system";
   message: string;
   to?: string;
   state?: "running" | "done" | "error";
   data?: unknown;
+  work?: WorkDetail;
+};
+/** Public work updates describe actions and results, never model reasoning. */
+export type WorkDetail = {
+  id: string;
+  kind: "query" | "analysis";
+  title: string;
+  query?: string;
+  source?: string;
+  summary?: string;
+  findings?: string[];
+  warnings?: string[];
+  outcome?: "success" | "partial" | "empty" | "unconfigured" | "error" | "demo";
 };
 export type Stop = {
+  id?: string;
+  facts?: StopFacts;
+  openingInfo?: OpeningInfo;
+  userProvidedFields?: string[];
   name: string;
   time: string;
   duration: string;
@@ -103,10 +179,24 @@ export type Stop = {
   tip: string;
   sourceIds: string[];
   photoQuery?: string;
+  poiId?: string | null;
   photo?: Photo;
   photoStatus?: "ready" | "unconfigured" | "not_found" | "error";
+  photoCheckedAt?: string;
+  place?: {
+    id: string;
+    name: string;
+    address: string;
+    photos: string[];
+  };
+  placeCheckedAt?: string;
+  placeAttemptedAt?: string;
+  locationNote?: string;
 };
 export type DayPlan = {
+  travelMode?: LocalTravelMode;
+  check?: DayCheck;
+  weatherFact?: Fact;
   day: number;
   date: string;
   title: string;
@@ -122,6 +212,13 @@ export type BudgetItem = {
   status: "estimate" | "verified" | "unknown";
 };
 export type Plan = {
+  costs?: CostLedger;
+  journey?: JourneyConstraints;
+  revision?: number;
+  updatedAt?: string;
+  quality?: PlanQuality;
+  lockedStopIds?: string[];
+  lastRevision?: RevisionSummary;
   id: string;
   title: string;
   subtitle: string;
@@ -147,8 +244,20 @@ export type Plan = {
   mode: "demo" | "live";
   images: Photo[];
   photoVersion?: number;
-  photoMode?: "search" | "curated";
+  photoMode?: "search" | "curated" | "amap" | "mixed";
   photoUpdatedAt?: string;
+  assets?: {
+    generatedAt: string;
+    status: "ready" | "partial";
+    locations: { ready: number; total: number };
+    photos: { ready: number; total: number };
+    maps: {
+      day: number;
+      kind: "amap" | "schematic" | "unavailable";
+      missing: string[];
+    }[];
+  };
+  confirmedSelection?: ConfirmedSelection;
 };
 export type Photo = {
   id?: string;
@@ -158,24 +267,54 @@ export type Photo = {
   profileUrl: string;
   photoUrl: string;
   downloadLocation?: string;
-  source?: "unsplash-search" | "unsplash-curated";
+  source?: "unsplash-search" | "unsplash-curated" | "amap-poi";
+  fallbackUrls?: string[];
   caption?: string;
   query?: string;
 };
 export type Job = {
+  /** Durable server-only state; omitted from publicJob responses. */
+  workflow?: {
+    version: 1;
+    selectionId?: string;
+    evidence: Evidence[];
+    reports: Record<string, AgentReport>;
+  };
+  canUndo?: boolean;
+  revisionHistory?: RevisionSummary[];
+  editDraft?: RevisionDraft;
+  editHistory?: RevisionHistory[];
   id: string;
   request: TripRequest;
-  status: "running" | "complete" | "error" | "cancelled";
+  status:
+    "running" | "awaiting_confirmation" | "complete" | "error" | "cancelled";
   events: TripEvent[];
   plan?: Plan;
   error?: string;
   createdAt: string;
+  proposal?: TravelProposal;
+  proposalFeedback?: ProposalFeedback[];
+  confirmedSelection?: ConfirmedSelection;
+};
+export type TripSummary = {
+  id: string;
+  destination: string;
+  title?: string;
+  days: number;
+  travelers: number;
+  startDate: string;
+  status: Job["status"];
+  mode: "demo" | "live";
+  createdAt: string;
+  coverPhotos: Photo[];
 };
 export type PublicConfig = {
   baseUrl: string;
   model: string;
   hasLlmKey: boolean;
   hasAmapKey: boolean;
+  hasAmapJsKey?: boolean;
+  hasAmapJsSecurityCode?: boolean;
   hasUnsplashKey: boolean;
   hasSearchKey: boolean;
   mcpServers: {
